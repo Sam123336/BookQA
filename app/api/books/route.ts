@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { getMemoryBooks } from '@/lib/rag-engine';
 import { Book } from '@/lib/types';
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {

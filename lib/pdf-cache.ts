@@ -1,8 +1,12 @@
 import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'fs';
 import { join } from 'path';
+import { tmpdir } from 'os';
 import { RAG_CONFIG } from './config';
 
-const DIR = process.env.PDF_CACHE_DIR || join(process.cwd(), '.pdf-cache');
+// Serverless filesystems are read-only apart from the temp directory, so the
+// project folder is only used when running on a normal machine.
+const DEFAULT_DIR = process.env.VERCEL ? join(tmpdir(), 'bookqa-pdfs') : join(process.cwd(), '.pdf-cache');
+const DIR = process.env.PDF_CACHE_DIR || DEFAULT_DIR;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const memory = new Map<string, Buffer>();

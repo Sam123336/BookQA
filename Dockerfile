@@ -13,12 +13,12 @@ RUN npm run build
 FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000
-# Long-running ingestion writes cached PDFs here; mount a volume at this path
-# to keep them across restarts.
-ENV PDF_CACHE_DIR=/data/pdf-cache
+# Only a cache in front of Supabase Storage, so it does not need to survive a
+# restart - and /tmp is writable by the unprivileged user a mounted volume is
+# not.
+ENV PDF_CACHE_DIR=/tmp/bookqa-pdfs
 
-RUN addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001 \
- && mkdir -p /data/pdf-cache && chown -R nextjs:nodejs /data
+RUN addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001
 
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./

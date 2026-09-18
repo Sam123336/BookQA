@@ -5,19 +5,17 @@ services:
     dockerfilePath: ./Dockerfile
     plan: starter
     healthCheckPath: /api/books
-    # Ingestion of a 300+ page book runs for many minutes after the upload
-    # response is sent, so the process must not be recycled underneath it.
     # PR previews are created by Render automatically. Production deploys are
     # triggered by CI instead, so a failing test cannot reach production.
     autoDeploy: false
     previewsEnabled: true
-    disk:
-      name: pdf-cache
-      mountPath: /data
-      sizeGB: 10
+    # No disk. Render mounts one root-owned, but the container runs as an
+    # unprivileged user, so /data was never writable and every upload failed on
+    # it. The originals live in Supabase Storage now; this path is only a cache
+    # and /tmp is the one directory the app user can always write.
     envVars:
       - key: PDF_CACHE_DIR
-        value: /data/pdf-cache
+        value: /tmp/bookqa-pdfs
       - key: NODE_ENV
         value: production
       - key: GEMINI_API_KEY

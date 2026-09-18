@@ -1,6 +1,6 @@
 import { extractText as extractTextFromUnpdf } from 'unpdf';
 import { ExtractedPage } from '../types';
-import { toUint8Array } from '../buffer';
+import { copyToUint8Array } from '../buffer';
 
 export class ScannedPdfError extends Error {
   constructor(message = "This PDF appears to be scanned or contains little extractable text.") {
@@ -53,7 +53,7 @@ function normalizePageTextEntries(rawText: unknown): string[] {
  */
 export async function extractTextFromPdf(pdfBuffer: Buffer): Promise<ExtractedPage[]> {
   try {
-    const uint8Array = toUint8Array(pdfBuffer);
+    const uint8Array = copyToUint8Array(pdfBuffer);
     const result = await extractTextFromUnpdf(uint8Array, { mergePages: false });
     const pageTexts = normalizePageTextEntries(result?.text);
 

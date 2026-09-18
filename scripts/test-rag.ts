@@ -252,7 +252,7 @@ async function runRAGTestSuite() {
 
   const chunkBytes = Math.ceil(RAG_CONFIG.PDF_CACHE_MAX_BYTES / 4);
   for (let i = 1; i <= 6; i++) {
-    storePdf(uuid(i), Buffer.alloc(chunkBytes));
+    await storePdf(uuid(i), Buffer.alloc(chunkBytes));
   }
 
   assert(
@@ -261,23 +261,23 @@ async function runRAGTestSuite() {
     `bytes=${cacheStats().bytes} limit=${RAG_CONFIG.PDF_CACHE_MAX_BYTES}`
   );
   assert(
-    getPdf(uuid(1)) !== undefined,
+    (await getPdf(uuid(1))) !== undefined,
     "Evicted-from-memory PDF is still served from disk (survives restart)"
   );
 
   const payload = Buffer.from('%PDF-1.4 persisted bytes');
-  storePdf(uuid(7), payload);
-  assert(getPdf(uuid(7))?.equals(payload) === true, "Stored PDF round-trips byte-for-byte");
+  await storePdf(uuid(7), payload);
+  assert((await getPdf(uuid(7)))?.equals(payload) === true, "Stored PDF round-trips byte-for-byte");
 
-  deletePdf(uuid(7));
-  assert(getPdf(uuid(7)) === undefined, "Deleting a book removes its cached PDF from disk and memory");
+  await deletePdf(uuid(7));
+  assert((await getPdf(uuid(7))) === undefined, "Deleting a book removes its cached PDF from disk and memory");
 
   for (const bad of ['../../etc/passwd', 'not-a-uuid', '../secrets', '']) {
-    storePdf(bad, Buffer.from('x'));
-    assert(getPdf(bad) === undefined, `Path-traversal id refused: ${JSON.stringify(bad)}`);
+    await storePdf(bad, Buffer.from('x'));
+    assert((await getPdf(bad)) === undefined, `Path-traversal id refused: ${JSON.stringify(bad)}`);
   }
 
-  for (let i = 1; i <= 6; i++) deletePdf(uuid(i));
+  for (let i = 1; i <= 6; i++) await deletePdf(uuid(i));
 
   console.log("\n--- TEST 11: Page Progress ---");
 

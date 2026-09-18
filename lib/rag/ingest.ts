@@ -64,7 +64,7 @@ export async function advanceIngestion(bookId: string): Promise<IngestProgress> 
 }
 
 async function storeNextChunks(book: Book): Promise<IngestProgress> {
-  const pdf = getPdf(book.id);
+  const pdf = await getPdf(book.id);
   if (!pdf) {
     throw new AppError('The uploaded PDF is no longer available. Please upload it again.', 410);
   }

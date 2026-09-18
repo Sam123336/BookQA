@@ -7,7 +7,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   const { id } = params;
-  const buffer = getPdf(id);
+  const buffer = await getPdf(id);
 
   if (!buffer) {
     return NextResponse.json({ error: 'PDF content not found' }, { status: 404 });

@@ -50,7 +50,7 @@ export async function DELETE(
     }
 
     deleteMemoryBook(id);
-    deletePdf(id);
+    await deletePdf(id);
 
     return NextResponse.json({ success: true, message: 'Book and associated data deleted.' });
   } catch (error) {

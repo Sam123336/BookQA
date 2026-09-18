@@ -48,7 +48,8 @@ async function withRetry<T>(
  */
 export async function generateBatchEmbeddings(
   texts: string[],
-  onBatch?: (embedded: number, total: number) => void | Promise<void>
+  onBatch?: (embedded: number, total: number) => void | Promise<void>,
+  maxAttempts: number = RAG_CONFIG.EMBEDDING_MAX_RETRIES
 ): Promise<number[][]> {
   const { config, client } = getAIProvider();
 
@@ -60,7 +61,7 @@ export async function generateBatchEmbeddings(
 
     try {
       const vectors = await withRetry(
-        RAG_CONFIG.EMBEDDING_MAX_RETRIES,
+        maxAttempts,
         RAG_CONFIG.EMBEDDING_RETRY_DELAY_MS,
         async () => {
           const response = await client.embeddings.create({
@@ -87,10 +88,14 @@ export async function generateBatchEmbeddings(
     } catch (error: any) {
       if (error instanceof AppError) throw error;
       if (error?.status === 429) {
-        throw new AppError(
-          `${config.name} rate limit reached while embedding (batch ${Math.floor(i / batchSize) + 1} ` +
-          `of ${Math.ceil(texts.length / batchSize)}). ${error.message}`,
-          429
+        const wait = retryAfterMs(error);
+        throw Object.assign(
+          new AppError(
+            `${config.name} rate limit reached while embedding (batch ${Math.floor(i / batchSize) + 1} ` +
+            `of ${Math.ceil(texts.length / batchSize)}).`,
+            429
+          ),
+          { retryAfterMs: wait }
         );
       }
       throw new AppError(`${config.name} embeddings failed: ${error?.message ?? error}`, 502);

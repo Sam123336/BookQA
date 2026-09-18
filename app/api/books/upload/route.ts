@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { processBookIngestion } from '@/lib/rag/ingest';
 import { registerMemoryBook } from '@/lib/rag/store';
 import { storePdf } from '@/lib/pdf-cache';
 import { RAG_CONFIG } from '@/lib/config';
@@ -60,12 +59,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Ingestion is not started here. The client drives it step by step via
+    // POST /api/books/[id]/ingest so no single request has to outlive a
+    // serverless time limit.
     storePdf(id, buffer);
     registerMemoryBook(book);
-
-    processBookIngestion(id, file.name, buffer).catch(err => {
-      console.error(`[books/upload] background ingestion failed for ${id}:`, err);
-    });
 
     return NextResponse.json({ book });
   } catch (error) {

@@ -43,29 +43,53 @@ export default function HomePage() {
     fetchBooks();
   }, [fetchBooks]);
 
-  // 2. Poll Status for Ingesting Books
+  // 2. Drive ingestion for the selected book.
+  //    Each call advances one bounded step, so this both reports progress and
+  //    performs the work. A chained timeout (not an interval) guarantees only
+  //    one step is ever in flight.
+  const bookId = selectedBook?.id;
+  const bookStatus = selectedBook?.status;
+
   useEffect(() => {
-    if (!selectedBook || selectedBook.status === 'COMPLETED' || selectedBook.status === 'FAILED') {
-      return;
-    }
+    if (!bookId || bookStatus === 'COMPLETED' || bookStatus === 'FAILED') return;
 
-    const interval = setInterval(async () => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+
+    const step = async () => {
+      let waitMs = 1200;
       try {
-        const res = await fetch(`/api/books/${selectedBook.id}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.book) {
-            setSelectedBook(data.book);
-            setBooks(prev => prev.map(b => b.id === data.book.id ? data.book : b));
-          }
-        }
-      } catch (err) {
-        console.error("Status polling error:", err);
-      }
-    }, 1500);
+        const res = await fetch(`/api/books/${bookId}/ingest`, { method: 'POST' });
+        const progress = await res.json();
+        if (cancelled) return;
 
-    return () => clearInterval(interval);
-  }, [selectedBook]);
+        if (res.ok) {
+          const patch = {
+            status: progress.status,
+            processed_chunks: progress.processed,
+            total_chunks: progress.total,
+            page_count: progress.pageCount,
+            error_message: progress.error ?? null,
+          };
+          setSelectedBook(prev => (prev && prev.id === bookId ? { ...prev, ...patch } : prev));
+          setBooks(prev => prev.map(b => (b.id === bookId ? { ...b, ...patch } : b)));
+
+          if (progress.done) return;
+          // Honour the provider's own backoff when it is rate limited.
+          if (progress.retryAfterMs) waitMs = Math.min(progress.retryAfterMs, 60000);
+        }
+      } catch {
+        waitMs = 5000;
+      }
+      if (!cancelled) timer = setTimeout(step, waitMs);
+    };
+
+    step();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [bookId, bookStatus]);
 
   useEffect(() => {
     const book = selectedBook;

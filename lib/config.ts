@@ -6,6 +6,10 @@ export const RAG_CONFIG = {
 
   // Batching & Concurrency for ingestion
   EMBEDDING_BATCH_SIZE: Number(process.env.EMBEDDING_BATCH_SIZE) || 50,
+
+  // Rows written per indexing step. Bounds that step so a very large book does
+  // not put one long insert inside a single request.
+  CHUNK_INSERT_BATCH: Number(process.env.CHUNK_INSERT_BATCH) || 300,
   // Ingestion runs in the background, so it waits out a rate limit rather than
   // failing a 500-page book after a few seconds. ~8 attempts capped at
   // RETRY_MAX_DELAY_MS is several minutes of patience per batch.

@@ -13,14 +13,12 @@ jobs:
   verify:
     name: Typecheck, test, build
     runs-on: ubuntu-latest
-    outputs:
-      deployable: ${{ steps.check.outputs.deployable }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - run: npm ci
@@ -31,65 +29,43 @@ jobs:
       - name: Tests
         run: npm run test:rag
 
-      # No secrets needed here: clients fall back to placeholders at build time
-      # and only require real keys at runtime.
+      # No secrets needed: clients fall back to placeholders at build time and
+      # only require real keys at runtime.
       - name: Build
         run: npm run build
 
-      - name: Is Vercel configured?
-        id: check
-        run: echo "deployable=${{ secrets.VERCEL_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
-
-  deploy:
-    name: ${{ github.event_name == 'pull_request' && 'Preview' || 'Production' }}
-    needs: verify
-    if: needs.verify.outputs.deployable == 'true'
+  image:
+    name: Docker image
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-    env:
-      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-      TARGET: ${{ github.event_name == 'pull_request' && 'preview' || 'production' }}
-      PROD_FLAG: ${{ github.event_name == 'pull_request' && '' || '--prod' }}
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
+      # Builds the same image the host runs, so a broken Dockerfile fails the
+      # PR rather than the deploy.
+      - name: Build image
+        run: docker build -t bookqa:ci .
 
-      - run: npm install --global vercel@latest
-
-      - name: Pull Vercel environment
-        run: vercel pull --yes --environment=$TARGET --token=${{ secrets.VERCEL_TOKEN }}
-
-      - name: Build
-        run: vercel build $PROD_FLAG --token=${{ secrets.VERCEL_TOKEN }}
-
-      - name: Deploy
-        id: deploy
+      - name: Boot it and check it serves
         run: |
-          url=$(vercel deploy --prebuilt $PROD_FLAG --token=${{ secrets.VERCEL_TOKEN }})
-          echo "url=$url" >> "$GITHUB_OUTPUT"
-          echo "Deployed to $url"
+          docker run -d --name bookqa-ci -p 3000:3000 bookqa:ci
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/ || true)
+            [ "$code" = "200" ] && echo "container serving (HTTP $code)" && exit 0
+            sleep 2
+          done
+          echo "container did not become healthy"; docker logs bookqa-ci; exit 1
 
-      - name: Comment preview URL
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const url = '${{ steps.deploy.outputs.url }}';
-            const marker = '<!-- vercel-preview -->';
-            const body = `${marker}\n**Preview deployment:** ${url}`;
-            const { data: comments } = await github.rest.issues.listComments({
-              ...context.repo, issue_number: context.issue.number,
-            });
-            const existing = comments.find(c => c.body?.includes(marker));
-            const api = github.rest.issues;
-            if (existing) {
-              await api.updateComment({ ...context.repo, comment_id: existing.id, body });
-            } else {
-              await api.createComment({ ...context.repo, issue_number: context.issue.number, body });
-            }
+  deploy:
+    name: Deploy production
+    needs: [verify, image]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy
+        run: |
+          if [ -z "${{ secrets.RENDER_DEPLOY_HOOK }}" ]; then
+            echo "RENDER_DEPLOY_HOOK not set - skipping deploy."
+            exit 0
+          fi
+          curl -fsS -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}"
+          echo "Deploy triggered."

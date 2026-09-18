@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: bookqa
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /api/books
+    # Ingestion of a 300+ page book runs for many minutes after the upload
+    # response is sent, so the process must not be recycled underneath it.
+    # PR previews are created by Render automatically. Production deploys are
+    # triggered by CI instead, so a failing test cannot reach production.
+    autoDeploy: false
+    previewsEnabled: true
+    disk:
+      name: pdf-cache
+      mountPath: /data
+      sizeGB: 10
+    envVars:
+      - key: PDF_CACHE_DIR
+        value: /data/pdf-cache
+      - key: NODE_ENV
+        value: production
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false

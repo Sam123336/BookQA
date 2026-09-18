@@ -2,33 +2,83 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --background: #0B0F19;
-  --foreground: #F3F4F6;
+@layer base {
+  :root {
+    --surface-base: 6 10 20;
+    --surface-1: 11 18 32;
+    --surface-2: 17 27 46;
+    --surface-3: 24 37 61;
+    --surface-raised: 31 47 77;
+    --border-subtle: 28 41 66;
+    --border-strong: 42 60 94;
+    --text-primary: 233 239 250;
+    --text-secondary: 154 172 200;
+    --text-muted: 107 126 156;
+    --accent-400: 96 165 250;
+    --accent-500: 59 130 246;
+    --accent-600: 37 99 235;
+    --accent-700: 29 78 216;
+    --success: 52 211 153;
+    --warning: 251 191 36;
+    --danger: 248 113 113;
+    --ring: 59 130 246;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background: rgb(var(--surface-base));
+    color: rgb(var(--text-primary));
+    overflow-x: hidden;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  :focus-visible {
+    outline: 2px solid rgb(var(--ring));
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background: rgb(var(--accent-600));
+    color: #fff;
+  }
 }
 
-body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  overflow-x: hidden;
+@layer utilities {
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
 }
 
-/* Custom scrollbar for clean document dark UI */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #0B0F19;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #1F2937;
-  border-radius: 3px;
+  background: rgb(var(--border-subtle));
+  border-radius: 999px;
+  border: 3px solid rgb(var(--surface-base));
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #374151;
+  background: rgb(var(--border-strong));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

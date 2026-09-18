@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Book, Message, Citation } from '@/lib/types';
 import { Header } from '@/components/Header';
 import { Sidebar } from '@/components/Sidebar';
@@ -8,6 +8,8 @@ import { IngestionProgress } from '@/components/IngestionProgress';
 import { ChatWindow } from '@/components/ChatWindow';
 import { UploadModal } from '@/components/UploadModal';
 import { SourcePanel } from '@/components/SourcePanel';
+
+const AUTO_SUMMARY_PROMPT = 'Summarize this book';
 
 export default function HomePage() {
   const [books, setBooks] = useState<Book[]>([]);
@@ -17,6 +19,7 @@ export default function HomePage() {
   const [isLoadingAnswer, setIsLoadingAnswer] = useState(false);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [activeCitation, setActiveCitation] = useState<Citation | null>(null);
+  const autoSummarized = useRef<Set<string>>(new Set());
 
   // 1. Fetch Books List
   const fetchBooks = useCallback(async () => {
@@ -64,20 +67,45 @@ export default function HomePage() {
     return () => clearInterval(interval);
   }, [selectedBook]);
 
-  // 3. Clear or Load Messages on Book Select Change
   useEffect(() => {
+    const book = selectedBook;
     setMessages([]);
     setSessionId(null);
     setActiveCitation(null);
-  }, [selectedBook?.id]);
+    if (!book || book.status !== 'COMPLETED') return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/books/${book.id}/session`);
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        if (cancelled) return;
+
+        if (data.messages?.length) {
+          setSessionId(data.sessionId);
+          setMessages(data.messages);
+          return;
+        }
+
+        if (autoSummarized.current.has(book.id)) return;
+        autoSummarized.current.add(book.id);
+        handleSendMessage(AUTO_SUMMARY_PROMPT, null);
+      } catch {
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [selectedBook?.id, selectedBook?.status]);
 
   // 4. Handle Question Submission
-  const handleSendMessage = async (question: string) => {
+  const handleSendMessage = async (question: string, forceSessionId?: string | null) => {
     if (!selectedBook) return;
+    const activeSessionId = forceSessionId !== undefined ? forceSessionId : sessionId;
 
     const userMessage: Message = {
       id: `user-${Date.now()}`,
-      session_id: sessionId || '',
+      session_id: activeSessionId || '',
       role: 'user',
       content: question,
       grounded: true,
@@ -93,7 +121,7 @@ export default function HomePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           bookId: selectedBook.id,
-          sessionId,
+          sessionId: activeSessionId,
           question,
         }),
       });
@@ -153,7 +181,7 @@ export default function HomePage() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-navy-950 font-sans selection:bg-brand-600 selection:text-white">
+    <div className="flex h-dvh flex-col overflow-hidden bg-surface-base">
       <Header
         books={books}
         selectedBook={selectedBook}
@@ -164,7 +192,7 @@ export default function HomePage() {
 
       {selectedBook && <IngestionProgress book={selectedBook} />}
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex min-h-0 flex-1">
         <Sidebar
           books={books}
           selectedBook={selectedBook}
@@ -172,7 +200,7 @@ export default function HomePage() {
           onOpenUpload={() => setIsUploadOpen(true)}
         />
 
-        <main className="flex-1 flex flex-col relative overflow-hidden">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col">
           <ChatWindow
             book={selectedBook}
             messages={messages}

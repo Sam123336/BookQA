@@ -28,3 +28,6 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
+
+# cached PDF originals
+/.pdf-cache/

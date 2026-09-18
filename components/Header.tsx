@@ -20,58 +20,67 @@ export const Header: React.FC<HeaderProps> = ({
   onDeleteBook,
 }) => {
   return (
-    <header className="h-14 border-b border-navy-800 bg-navy-900 px-4 flex items-center justify-between text-slate-200">
-      <div className="flex items-center gap-3">
-        <div className="bg-brand-600 text-white p-1.5 rounded-md flex items-center justify-center">
-          <BookOpen className="w-5 h-5" />
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="font-semibold text-white tracking-tight">BookQA</span>
-          <span className="text-slate-500 text-sm hidden sm:inline">|</span>
-          <span className="text-slate-400 text-sm hidden sm:inline">Ask questions about your documents</span>
+    <header className="z-30 flex h-16 shrink-0 items-center justify-between gap-3 border-b border-edge bg-surface-1/90 px-4 backdrop-blur-xl sm:px-6">
+      <div className="flex shrink-0 items-center gap-3">
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-accent-500 to-accent-700 text-white shadow-glow">
+          <BookOpen className="h-[18px] w-[18px]" aria-hidden="true" />
+        </span>
+        <div className="hidden min-w-0 xs:block sm:block">
+          <p className="truncate text-ui font-semibold tracking-tight text-ink">BookQA</p>
+          <p className="hidden truncate text-meta text-ink-muted sm:block">
+            Grounded answers with page citations
+          </p>
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
         {books.length > 0 && (
-          <div className="relative group">
+          <div className="relative min-w-0 flex-1 sm:flex-none sm:w-72">
+            <label htmlFor="book-switcher" className="sr-only">
+              Select a book
+            </label>
             <select
+              id="book-switcher"
               value={selectedBook?.id || ''}
               onChange={(e) => {
-                const b = books.find(item => item.id === e.target.value);
+                const b = books.find((item) => item.id === e.target.value);
                 if (b) onSelectBook(b);
               }}
-              className="appearance-none bg-navy-850 hover:bg-navy-800 text-slate-200 border border-navy-700 text-xs sm:text-sm rounded-md py-1.5 pl-3 pr-8 focus:outline-none focus:border-brand-500 cursor-pointer transition-colors"
+              className="h-11 w-full min-w-0 max-w-[18rem] cursor-pointer appearance-none truncate rounded-xl border border-edge bg-surface-2 pl-3 pr-9 text-ui text-ink-soft transition-colors duration-200 hover:border-edge-strong hover:text-ink"
             >
               {books.map((book) => (
-                <option key={book.id} value={book.id} className="bg-navy-900 text-slate-200">
-                  {book.title} ({book.page_count > 0 ? `${book.page_count}p` : 'Ingesting'})
+                <option key={book.id} value={book.id} className="bg-surface-2 text-ink">
+                  {book.title} {book.page_count > 0 ? `· ${book.page_count}p` : ''}
                 </option>
               ))}
             </select>
-            <ChevronDown className="w-4 h-4 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <ChevronDown
+              className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted"
+              aria-hidden="true"
+            />
           </div>
         )}
 
         <button
           onClick={onOpenUpload}
-          className="bg-brand-600 hover:bg-brand-500 text-white text-xs sm:text-sm px-3 py-1.5 rounded-md flex items-center gap-1.5 font-medium transition-colors"
+          className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-xl bg-accent-600 px-3.5 text-ui font-medium text-white shadow-raise transition-all duration-200 hover:bg-accent-500 active:scale-[0.98] sm:px-4"
         >
-          <Plus className="w-4 h-4" />
-          <span>Add book</span>
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          <span className="hidden sm:inline">Add book</span>
+          <span className="sr-only sm:hidden">Add book</span>
         </button>
 
         {selectedBook && (
           <button
             onClick={() => {
-              if (confirm(`Are you sure you want to delete "${selectedBook.title}"?`)) {
+              if (confirm(`Delete "${selectedBook.title}"? This cannot be undone.`)) {
                 onDeleteBook(selectedBook.id);
               }
             }}
-            title="Delete selected book"
-            className="text-slate-400 hover:text-red-400 p-1.5 rounded-md hover:bg-navy-800 transition-colors"
+            aria-label={`Delete ${selectedBook.title}`}
+            className="grid h-11 w-11 cursor-pointer place-items-center rounded-xl text-ink-muted transition-colors duration-200 hover:bg-surface-2 hover:text-danger"
           >
-            <Trash2 className="w-4 h-4" />
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
           </button>
         )}
       </div>

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { routeError } from '@/lib/http';
 
 export async function GET(
   req: NextRequest,
@@ -38,7 +39,7 @@ export async function GET(
     }
 
     return NextResponse.json({ messages: messages || [] });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || 'Failed to fetch messages' }, { status: 500 });
+  } catch (error) {
+    return routeError('sessions/messages', error, 'Failed to fetch messages');
   }
 }

@@ -79,20 +79,20 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ bookId, pageNumber }) => {
   }, [bookId, currentPage, scale]);
 
   return (
-    <div className="flex flex-col h-full bg-navy-950 rounded-md border border-navy-800 overflow-hidden">
-      <div className="flex items-center justify-between p-2 px-3 border-b border-navy-800 bg-navy-900 text-xs text-slate-300">
+    <div className="flex flex-col h-full bg-surface-base rounded-xl border border-edge overflow-hidden">
+      <div className="flex items-center justify-between p-2 px-3 border-b border-edge bg-surface-1 text-meta text-ink-soft">
         <div className="flex items-center gap-1">
           <button
             onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-            className="p-1 rounded hover:bg-navy-800 text-slate-400 hover:text-white"
+            className="grid h-9 w-9 cursor-pointer place-items-center rounded-lg hover:bg-surface-3 text-ink-muted hover:text-ink"
             title="Previous Page"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <span className="font-mono text-[11px] px-1.5">Page {currentPage}</span>
+          <span className="font-mono text-meta px-1.5">Page {currentPage}</span>
           <button
             onClick={() => setCurrentPage(p => p + 1)}
-            className="p-1 rounded hover:bg-navy-800 text-slate-400 hover:text-white"
+            className="grid h-9 w-9 cursor-pointer place-items-center rounded-lg hover:bg-surface-3 text-ink-muted hover:text-ink"
             title="Next Page"
           >
             <ChevronRight className="w-4 h-4" />
@@ -102,34 +102,34 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ bookId, pageNumber }) => {
         <div className="flex items-center gap-1">
           <button
             onClick={() => setScale(s => Math.max(0.8, s - 0.2))}
-            className="p-1 rounded hover:bg-navy-800 text-slate-400 hover:text-white"
+            className="grid h-9 w-9 cursor-pointer place-items-center rounded-lg hover:bg-surface-3 text-ink-muted hover:text-ink"
           >
             <ZoomOut className="w-3.5 h-3.5" />
           </button>
-          <span className="text-[10px] font-mono text-slate-400">{Math.round(scale * 100)}%</span>
+          <span className="text-label tabular text-ink-muted">{Math.round(scale * 100)}%</span>
           <button
             onClick={() => setScale(s => Math.min(2.0, s + 0.2))}
-            className="p-1 rounded hover:bg-navy-800 text-slate-400 hover:text-white"
+            className="grid h-9 w-9 cursor-pointer place-items-center rounded-lg hover:bg-surface-3 text-ink-muted hover:text-ink"
           >
             <ZoomIn className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-navy-950 relative">
+      <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-surface-base relative">
         {loading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-navy-950/80 z-10">
-            <Loader2 className="w-6 h-6 text-brand-500 animate-spin" />
+          <div className="absolute inset-0 flex items-center justify-center bg-surface-base/80 z-10">
+            <Loader2 className="w-6 h-6 text-accent-400 animate-spin" />
           </div>
         )}
 
         {error ? (
-          <div className="text-center p-6 text-slate-400 text-xs max-w-xs">
-            <p className="font-medium text-slate-300 mb-1">Page {currentPage} Document View</p>
-            <p className="text-[11px] text-slate-500">{error}</p>
+          <div className="text-center p-6 text-ink-muted text-meta max-w-xs">
+            <p className="font-medium text-ink-soft mb-1">Page {currentPage} Document View</p>
+            <p className="text-meta text-ink-muted">{error}</p>
           </div>
         ) : (
-          <canvas ref={canvasRef} className="max-w-full shadow-lg rounded border border-navy-800" />
+          <canvas ref={canvasRef} className="max-w-full shadow-lg rounded border border-edge" />
         )}
       </div>
     </div>

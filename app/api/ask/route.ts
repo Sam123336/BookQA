@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { queryBookQuestion, getMemoryBook } from '@/lib/rag-engine';
-import { Message, Citation } from '@/lib/types';
+import { queryBookQuestion } from '@/lib/rag/query';
+import { getMemoryBook } from '@/lib/rag/store';
+import { jsonError, routeError } from '@/lib/http';
 
 export async function POST(req: NextRequest) {
   try {
@@ -9,7 +10,7 @@ export async function POST(req: NextRequest) {
     const { bookId, sessionId: reqSessionId, question } = body;
 
     if (!bookId || !question || typeof question !== 'string' || !question.trim()) {
-      return NextResponse.json({ error: 'bookId and valid non-empty question are required.' }, { status: 400 });
+      return jsonError('bookId and valid non-empty question are required.', 400);
     }
 
     // Fetch book to verify status and title
@@ -36,9 +37,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!isReady) {
-      return NextResponse.json({
-        error: 'Book is still being processed. Question answering is disabled until status is Ready.'
-      }, { status: 400 });
+      return jsonError('Book is still being processed. Question answering is disabled until status is Ready.', 400);
     }
 
     // Ensure active chat session
@@ -107,8 +106,7 @@ export async function POST(req: NextRequest) {
       retrievedChunksCount: result.retrievedChunksCount,
     });
 
-  } catch (error: any) {
-    console.error("Ask endpoint error:", error);
-    return NextResponse.json({ error: error.message || 'An unexpected error occurred.' }, { status: 500 });
+  } catch (error) {
+    return routeError('ask', error, 'An unexpected error occurred.');
   }
 }

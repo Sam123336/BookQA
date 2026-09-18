@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { getMemoryBook, deleteMemoryBook } from '@/lib/rag-engine';
+import { getMemoryBook, deleteMemoryBook } from '@/lib/rag/store';
+import { deletePdf } from '@/lib/pdf-cache';
+import { jsonError, routeError } from '@/lib/http';
 
 export async function GET(
   req: NextRequest,
@@ -26,9 +28,9 @@ export async function GET(
       return NextResponse.json({ book: memBook });
     }
 
-    return NextResponse.json({ error: 'Book not found' }, { status: 404 });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || 'Failed to fetch book' }, { status: 500 });
+    return jsonError('Book not found', 404);
+  } catch (error) {
+    return routeError('books/[id] GET', error, 'Failed to fetch book');
   }
 }
 
@@ -40,14 +42,18 @@ export async function DELETE(
 
   try {
     if (isSupabaseConfigured()) {
-      // Delete from Supabase tables (cascade handles chunks, sessions, messages)
-      await supabaseAdmin.from('books').delete().eq('id', id);
+      const { error } = await supabaseAdmin.from('books').delete().eq('id', id);
+      if (error) {
+        console.error('[books/[id] DELETE]', error.message);
+        return jsonError('Could not delete the book.', 500);
+      }
     }
 
     deleteMemoryBook(id);
+    deletePdf(id);
 
     return NextResponse.json({ success: true, message: 'Book and associated data deleted.' });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || 'Failed to delete book' }, { status: 500 });
+  } catch (error) {
+    return routeError('books/[id] DELETE', error, 'Failed to delete book');
   }
 }

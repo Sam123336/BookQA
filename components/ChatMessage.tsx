@@ -2,77 +2,76 @@
 
 import React from 'react';
 import { Message, Citation } from '@/lib/types';
-import { User, Bot, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
+import { User, Sparkles, Quote } from 'lucide-react';
 
 interface ChatMessageProps {
   message: Message;
   onSelectCitation: (citation: Citation) => void;
 }
 
-export const ChatMessage: React.FC<ChatMessageProps> = ({
-  message,
-  onSelectCitation,
-}) => {
+export const ChatMessage: React.FC<ChatMessageProps> = ({ message, onSelectCitation }) => {
   const isUser = message.role === 'user';
-  const hasCitations = message.citations && message.citations.length > 0;
+  const citations = message.citations ?? [];
 
   return (
-    <div className={`py-4 px-4 ${isUser ? 'bg-navy-900/50' : 'bg-transparent'} transition-colors`}>
-      <div className="max-w-3xl mx-auto flex gap-3.5">
-        <div
-          className={`w-7 h-7 rounded-md flex items-center justify-center shrink-0 mt-0.5 text-xs font-semibold ${
-            isUser
-              ? 'bg-navy-700 text-slate-200'
-              : 'bg-brand-600 text-white'
+    <article className="animate-fade-up px-4 py-6 sm:px-6">
+      <div className="mx-auto flex max-w-3xl gap-4">
+        <span
+          className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${
+            isUser ? 'bg-surface-3 text-ink-soft' : 'bg-gradient-to-br from-accent-500 to-accent-700 text-white'
           }`}
+          aria-hidden="true"
         >
-          {isUser ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
-        </div>
+          {isUser ? <User className="h-4 w-4" /> : <Sparkles className="h-4 w-4" />}
+        </span>
 
-        <div className="flex-1 min-w-0 space-y-2 text-xs sm:text-sm text-slate-200 leading-relaxed">
-          <div className="font-semibold text-slate-400 text-[11px] uppercase tracking-wider mb-1">
-            {isUser ? 'You' : 'BookQA Assistant'}
-          </div>
+        <div className="min-w-0 flex-1">
+          <h3 className="mb-1.5 text-label font-semibold uppercase text-ink-muted">
+            {isUser ? 'You' : 'BookQA'}
+          </h3>
 
-          <div className="whitespace-pre-wrap text-slate-200">
+          <div
+            className={`whitespace-pre-wrap text-body ${
+              isUser ? 'text-ink-soft' : 'text-ink'
+            }`}
+          >
             {message.content}
           </div>
 
-          {!isUser && hasCitations && (
-            <div className="pt-2 mt-3 border-t border-navy-800/80">
-              <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                <FileText className="w-3.5 h-3.5 text-brand-500" />
-                <span>Verified Sources</span>
-              </div>
+          {!isUser && citations.length > 0 && (
+            <section className="mt-5 rounded-2xl border border-edge bg-surface-1 p-4">
+              <h4 className="mb-3 flex items-center gap-2 text-label font-semibold uppercase text-ink-muted">
+                <Quote className="h-3.5 w-3.5 text-accent-400" aria-hidden="true" />
+                Verified sources
+              </h4>
 
-              <div className="flex flex-wrap gap-2">
-                {message.citations!.map((cit, idx) => {
-                  const label = cit.reason || (cit.chapter ? `${cit.chapter}` : `Page ${cit.page_number}`);
+              <ul className="flex flex-wrap gap-2">
+                {citations.map((cit, idx) => {
+                  const detail = cit.chapter || cit.reason;
                   return (
-                    <button
-                      key={cit.id || `cit-${idx}`}
-                      onClick={() => onSelectCitation(cit)}
-                      className="group flex items-center gap-1.5 bg-navy-850 hover:bg-navy-800 border border-navy-700 hover:border-brand-500/50 text-slate-300 hover:text-white px-2.5 py-1 rounded text-xs transition-colors cursor-pointer"
-                    >
-                      <span className="font-mono font-medium text-brand-400">
-                        Page {cit.page_number}
-                      </span>
-                      {label && label !== `Page ${cit.page_number}` && (
-                        <>
-                          <span className="text-slate-600">•</span>
-                          <span className="truncate max-w-[160px] text-slate-400 group-hover:text-slate-200">
-                            {label}
+                    <li key={cit.id || `cit-${idx}`}>
+                      <button
+                        onClick={() => onSelectCitation(cit)}
+                        aria-label={`Open page ${cit.page_number} in the source document`}
+                        className="group inline-flex max-w-full cursor-pointer items-center gap-2 rounded-xl border border-edge bg-surface-2 py-2 pl-2 pr-3 text-left transition-all duration-200 hover:border-accent-600 hover:bg-surface-3 active:scale-[0.98]"
+                      >
+                        <span className="tabular rounded-lg bg-accent-600/15 px-2 py-1 text-meta font-semibold text-accent-400">
+                          p.{cit.page_number}
+                        </span>
+                        {detail && (
+                          <span className="truncate text-meta text-ink-soft transition-colors group-hover:text-ink">
+                            {detail}
                           </span>
-                        </>
-                      )}
-                    </button>
+                        )}
+                      </button>
+                    </li>
                   );
                 })}
-              </div>
-            </div>
+              </ul>
+            </section>
           )}
         </div>
       </div>
-    </div>
+    </article>
   );
 };

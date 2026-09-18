@@ -2,13 +2,38 @@
 
 import React from 'react';
 import { Book } from '@/lib/types';
-import { Plus, BookOpen, FileText, CheckCircle2, Loader2, AlertCircle } from 'lucide-react';
+import { Plus, FileText, Loader2, AlertCircle, Library } from 'lucide-react';
 
 interface SidebarProps {
   books: Book[];
   selectedBook: Book | null;
   onSelectBook: (book: Book) => void;
   onOpenUpload: () => void;
+}
+
+function StatusBadge({ book }: { book: Book }) {
+  if (book.status === 'COMPLETED') {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-ok">
+        <span className="h-1.5 w-1.5 rounded-full bg-ok" aria-hidden="true" />
+        Ready
+      </span>
+    );
+  }
+  if (book.status === 'FAILED') {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-danger">
+        <AlertCircle className="h-3 w-3" aria-hidden="true" />
+        Failed
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 text-warn">
+      <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+      Ingesting
+    </span>
+  );
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -18,73 +43,83 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenUpload,
 }) => {
   return (
-    <aside className="w-64 border-r border-navy-800 bg-navy-950 flex flex-col h-[calc(100vh-3.5rem)] text-slate-300">
-      <div className="p-3 border-b border-navy-800">
+    <aside className="hidden min-h-0 w-72 shrink-0 flex-col border-r border-edge bg-surface-1 md:flex">
+      <div className="p-3">
         <button
           onClick={onOpenUpload}
-          className="w-full bg-navy-850 hover:bg-navy-800 border border-navy-700 hover:border-slate-600 text-slate-200 text-xs sm:text-sm py-2 px-3 rounded-md flex items-center justify-center gap-2 font-medium transition-colors"
+          className="inline-flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-edge bg-surface-2 text-ui font-medium text-ink-soft transition-all duration-200 hover:border-accent-600 hover:bg-surface-3 hover:text-ink active:scale-[0.99]"
         >
-          <Plus className="w-4 h-4 text-brand-500" />
-          <span>Add book</span>
+          <Plus className="h-4 w-4 text-accent-400" aria-hidden="true" />
+          Add book
         </button>
       </div>
 
-      <div className="p-3">
-        <h2 className="text-[11px] font-semibold tracking-wider text-slate-500 uppercase px-2 mb-2">
-          Books ({books.length})
-        </h2>
+      <div className="flex items-center justify-between px-5 pb-2 pt-1">
+        <h2 className="text-label font-semibold uppercase text-ink-muted">Library</h2>
+        <span className="tabular rounded-full bg-surface-2 px-2 py-0.5 text-label text-ink-muted">
+          {books.length}
+        </span>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-2 space-y-1">
+      <nav aria-label="Books" className="flex-1 overflow-y-auto px-2 pb-4">
         {books.length === 0 ? (
-          <div className="px-3 py-6 text-center text-xs text-slate-500">
-            No books uploaded yet.
+          <div className="mx-2 mt-6 rounded-2xl border border-dashed border-edge px-4 py-10 text-center">
+            <Library className="mx-auto h-7 w-7 text-ink-muted" aria-hidden="true" />
+            <p className="mt-3 text-ui font-medium text-ink-soft">No books yet</p>
+            <p className="mt-1 text-meta text-ink-muted">
+              Upload a PDF to start asking grounded questions.
+            </p>
+            <button
+              onClick={onOpenUpload}
+              className="mt-4 cursor-pointer text-meta font-medium text-accent-400 transition-colors hover:text-accent-500"
+            >
+              Upload your first book
+            </button>
           </div>
         ) : (
-          books.map((book) => {
-            const isSelected = selectedBook?.id === book.id;
-            const isReady = book.status === 'COMPLETED';
-            const isFailed = book.status === 'FAILED';
-            const isProcessing = !isReady && !isFailed;
-
-            return (
-              <button
-                key={book.id}
-                onClick={() => onSelectBook(book)}
-                className={`w-full text-left p-2.5 rounded-md text-xs transition-colors flex items-start gap-2.5 ${
-                  isSelected
-                    ? 'bg-navy-850 border border-navy-700 text-white font-medium'
-                    : 'hover:bg-navy-900 text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <FileText className={`w-4 h-4 mt-0.5 shrink-0 ${isSelected ? 'text-brand-500' : 'text-slate-500'}`} />
-                <div className="flex-1 min-w-0">
-                  <div className="truncate text-xs font-medium text-slate-200">{book.title}</div>
-                  <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-500">
-                    <span>{book.page_count > 0 ? `${book.page_count} pages` : 'PDF'}</span>
-                    <span>•</span>
-                    {isReady && (
-                      <span className="text-emerald-400 flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"></span> Ready
-                      </span>
+          <ul className="space-y-1">
+            {books.map((book) => {
+              const isSelected = selectedBook?.id === book.id;
+              return (
+                <li key={book.id}>
+                  <button
+                    onClick={() => onSelectBook(book)}
+                    aria-current={isSelected ? 'true' : undefined}
+                    className={`group relative flex w-full cursor-pointer items-start gap-3 rounded-xl px-3 py-3 text-left transition-colors duration-200 ${
+                      isSelected
+                        ? 'bg-surface-3 text-ink'
+                        : 'text-ink-soft hover:bg-surface-2 hover:text-ink'
+                    }`}
+                  >
+                    {isSelected && (
+                      <span
+                        className="absolute left-0 top-1/2 h-7 w-[3px] -translate-y-1/2 rounded-r-full bg-accent-500"
+                        aria-hidden="true"
+                      />
                     )}
-                    {isProcessing && (
-                      <span className="text-amber-400 flex items-center gap-1">
-                        <Loader2 className="w-3 h-3 animate-spin" /> Ingesting
+                    <FileText
+                      className={`mt-0.5 h-4 w-4 shrink-0 transition-colors ${
+                        isSelected ? 'text-accent-400' : 'text-ink-muted group-hover:text-ink-soft'
+                      }`}
+                      aria-hidden="true"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-ui font-medium">{book.title}</span>
+                      <span className="mt-1 flex items-center gap-2 text-meta text-ink-muted">
+                        <span className="tabular">
+                          {book.page_count > 0 ? `${book.page_count} pages` : 'PDF'}
+                        </span>
+                        <span aria-hidden="true">·</span>
+                        <StatusBadge book={book} />
                       </span>
-                    )}
-                    {isFailed && (
-                      <span className="text-red-400 flex items-center gap-1">
-                        <AlertCircle className="w-3 h-3" /> Failed
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </button>
-            );
-          })
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
         )}
-      </div>
+      </nav>
     </aside>
   );
 };

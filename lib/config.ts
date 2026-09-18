@@ -9,14 +9,21 @@ export const RAG_CONFIG = {
   EMBEDDING_MAX_RETRIES: 4,
   EMBEDDING_RETRY_DELAY_MS: 1000,
 
-  // OpenAI Model Settings
+  LLM_MAX_RETRIES: 5,
+  LLM_RETRY_DELAY_MS: 2000,
+
   EMBEDDING_MODEL: 'text-embedding-3-small',
   LLM_MODEL: 'gpt-4o-mini',
 
-  // Vector Similarity Search
+  EMBEDDING_DIM: 1536,
+
   TOP_K: Number(process.env.TOP_K) || 7,
-  MIN_SIMILARITY: Number(process.env.MIN_SIMILARITY) || 0.35,
+
+  SUMMARY_CHUNKS: Number(process.env.SUMMARY_CHUNKS) || 12,
 
   // Standard Refusal Message required by specification
+  MAX_UPLOAD_BYTES: Number(process.env.MAX_UPLOAD_BYTES) || 50 * 1024 * 1024,
+  PDF_CACHE_MAX_BYTES: Number(process.env.PDF_CACHE_MAX_BYTES) || 256 * 1024 * 1024,
+
   REFUSAL_RESPONSE: "I couldn't find enough information about this in the selected book.",
 };

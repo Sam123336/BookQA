@@ -1,32 +1,10 @@
-import { extractTextFromPdf, ScannedPdfError } from './pdf/extractor';
-import { createPageAwareChunks } from './pdf/chunker';
-import { generateBatchEmbeddings, generateQueryEmbedding, generateGroundedAnswer } from './ai/openai';
-import { validateAndDeduplicateCitations } from './ai/citations';
-import { supabaseAdmin, isSupabaseConfigured } from './supabase';
-import { RAG_CONFIG } from './config';
-import { Book, BookChunk, Citation, BookStatus } from './types';
+import { extractTextFromPdf, ScannedPdfError } from '../pdf/extractor';
+import { createPageAwareChunks } from '../pdf/chunker';
+import { generateBatchEmbeddings } from '../ai/llm';
+import { supabaseAdmin, isSupabaseConfigured } from '../supabase';
+import { Book, BookStatus } from '../types';
+import { getMemoryBook, setMemoryChunks } from './store';
 
-// In-memory fallback store for local development without active Supabase credentials
-const memoryBooks = new Map<string, Book>();
-const memoryChunks = new Map<string, BookChunk[]>();
-
-export function getMemoryBooks(): Book[] {
-  return Array.from(memoryBooks.values());
-}
-
-export function getMemoryBook(id: string): Book | undefined {
-  return memoryBooks.get(id);
-}
-
-export function deleteMemoryBook(id: string): boolean {
-  memoryChunks.delete(id);
-  return memoryBooks.delete(id);
-}
-
-/**
- * Execute full PDF ingestion pipeline asynchronously in background:
- * Storage Upload -> Page Extraction -> Page-Aware Chunks -> Batch Embeddings -> Database Store
- */
 export async function processBookIngestion(
   bookId: string,
   fileName: string,
@@ -108,7 +86,7 @@ export async function processBookIngestion(
       }
     } else {
       // Store in memory fallback
-      memoryChunks.set(bookId, chunks);
+      setMemoryChunks(bookId, chunks);
     }
 
     // 6. Complete Ingestion
@@ -124,87 +102,6 @@ export async function processBookIngestion(
   }
 }
 
-/**
- * Performs vector similarity search and grounded LLM answer generation.
- */
-export async function queryBookQuestion(
-  bookId: string,
-  bookTitle: string,
-  question: string
-): Promise<{
-  answer: string;
-  citations: Citation[];
-  grounded: boolean;
-  retrievedChunksCount: number;
-}> {
-  // 1. Generate query embedding
-  const queryEmbedding = await generateQueryEmbedding(question);
-
-  // 2. Perform Vector Search
-  let relevantChunks: BookChunk[] = [];
-
-  if (isSupabaseConfigured()) {
-    const { data, error } = await supabaseAdmin.rpc('match_book_chunks', {
-      query_embedding: queryEmbedding,
-      match_book_id: bookId,
-      match_threshold: RAG_CONFIG.MIN_SIMILARITY,
-      match_count: RAG_CONFIG.TOP_K,
-    });
-
-    if (error) {
-      console.error("Vector RPC match error:", error);
-    } else if (data) {
-      relevantChunks = data.map((d: any) => ({
-        id: d.id,
-        book_id: d.book_id,
-        page_number: d.page_number,
-        chapter: d.chapter,
-        section: d.section,
-        chunk_index: d.chunk_index,
-        content: d.content,
-        similarity: d.similarity,
-      }));
-    }
-  } else {
-    // Memory fallback cosine similarity match
-    const chunks = memoryChunks.get(bookId) || [];
-    const scored = chunks.map(chunk => {
-      const sim = cosineSimilarity(queryEmbedding, chunk.embedding || []);
-      return { ...chunk, similarity: sim };
-    });
-
-    relevantChunks = scored
-      .filter(c => (c.similarity || 0) >= RAG_CONFIG.MIN_SIMILARITY)
-      .sort((a, b) => (b.similarity || 0) - (a.similarity || 0))
-      .slice(0, RAG_CONFIG.TOP_K);
-  }
-
-  // 3. Evaluate evidence availability
-  if (relevantChunks.length === 0) {
-    return {
-      answer: RAG_CONFIG.REFUSAL_RESPONSE,
-      citations: [],
-      grounded: false,
-      retrievedChunksCount: 0,
-    };
-  }
-
-  // 4. Generate grounded LLM response
-  const llmResponse = await generateGroundedAnswer(bookTitle, question, relevantChunks);
-
-  // 5. Validate & deduplicate citations
-  const verifiedCitations = validateAndDeduplicateCitations(llmResponse, relevantChunks);
-  const isGrounded = verifiedCitations.length > 0 && !llmResponse.answer.includes("couldn't find enough information");
-
-  return {
-    answer: llmResponse.answer,
-    citations: verifiedCitations,
-    grounded: isGrounded,
-    retrievedChunksCount: relevantChunks.length,
-  };
-}
-
-// Database helper functions
 async function updateBookStatus(
   bookId: string,
   status: BookStatus,
@@ -221,7 +118,7 @@ async function updateBookStatus(
       updated_at: new Date().toISOString()
     }).eq('id', bookId);
   } else {
-    const book = memoryBooks.get(bookId);
+    const book = getMemoryBook(bookId);
     if (book) {
       book.status = status;
       book.processed_chunks = processed;
@@ -239,27 +136,9 @@ async function updateBookFields(bookId: string, fields: Partial<Book>) {
       updated_at: new Date().toISOString()
     }).eq('id', bookId);
   } else {
-    const book = memoryBooks.get(bookId);
+    const book = getMemoryBook(bookId);
     if (book) {
       Object.assign(book, fields);
     }
   }
-}
-
-export function registerMemoryBook(book: Book) {
-  memoryBooks.set(book.id, book);
-}
-
-function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length === 0 || b.length === 0 || a.length !== b.length) return 0;
-  let dotProduct = 0;
-  let normA = 0;
-  let normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dotProduct += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-  if (normA === 0 || normB === 0) return 0;
-  return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
 }

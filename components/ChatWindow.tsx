@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Book, Message, Citation } from '@/lib/types';
 import { ChatMessage } from './ChatMessage';
-import { Send, Loader2, BookOpen, AlertCircle, HelpCircle } from 'lucide-react';
+import { Send, BookOpen, AlertCircle, Sparkles } from 'lucide-react';
 
 interface ChatWindowProps {
   book: Book | null;
@@ -14,11 +14,31 @@ interface ChatWindowProps {
 }
 
 const EXAMPLE_PROMPTS = [
-  "What is this book about?",
-  "Who is the main character?",
-  "What happens in the beginning?",
-  "What are the major themes?"
+  'Summarize this book',
+  'What are the major themes?',
+  'Who are the main characters?',
+  'What happens in the first chapter?',
 ];
+
+function ThinkingRow() {
+  return (
+    <div className="px-4 py-6 sm:px-6" aria-live="polite">
+      <div className="mx-auto flex max-w-3xl gap-4">
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-accent-500 to-accent-700 text-white">
+          <Sparkles className="h-4 w-4 animate-pulse" aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1 space-y-2.5 pt-1.5">
+          {['w-11/12', 'w-4/5', 'w-2/3'].map((w) => (
+            <div key={w} className={`relative h-3 overflow-hidden rounded-full bg-surface-2 ${w}`}>
+              <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-surface-raised to-transparent" />
+            </div>
+          ))}
+          <p className="pt-1 text-meta text-ink-muted">Searching the book and checking citations…</p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export const ChatWindow: React.FC<ChatWindowProps> = ({
   book,
@@ -29,7 +49,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 }) => {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
   const isBookReady = book?.status === 'COMPLETED';
 
   useEffect(() => {
@@ -45,104 +64,97 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
   if (!book) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-slate-400 bg-navy-950">
-        <BookOpen className="w-12 h-12 text-navy-700 mb-3" />
-        <h3 className="text-base font-medium text-slate-300">No book selected</h3>
-        <p className="text-xs text-slate-500 mt-1 max-w-sm">
-          Select an uploaded book from the sidebar or upload a new PDF to begin asking grounded questions.
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 bg-surface-base px-6 text-center">
+        <span className="grid h-14 w-14 place-items-center rounded-2xl border border-edge bg-surface-1">
+          <BookOpen className="h-6 w-6 text-ink-muted" aria-hidden="true" />
+        </span>
+        <h2 className="text-ui font-semibold text-ink">No book selected</h2>
+        <p className="max-w-sm text-meta text-ink-muted">
+          Choose a book from the library or upload a PDF to start asking questions.
         </p>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 flex flex-col h-[calc(100vh-3.5rem)] bg-navy-950">
-      {/* Messages Scroll Area */}
-      <div className="flex-1 overflow-y-auto">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface-base">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         {messages.length === 0 ? (
-          <div className="max-w-xl mx-auto my-auto py-16 px-4 text-center">
-            <h3 className="text-base font-semibold text-slate-200 mb-1">
-              Ask a question about this book
-            </h3>
-            <p className="text-xs text-slate-400 mb-6">
-              Answers are strictly grounded in <span className="font-medium text-slate-200">{book.title}</span> with verified page citations.
-            </p>
-
-            <div className="space-y-2 text-left">
-              <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider px-1">
-                Suggested questions:
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {EXAMPLE_PROMPTS.map((prompt, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => {
-                      if (isBookReady && !isLoading) {
-                        onSendMessage(prompt);
-                      }
-                    }}
-                    disabled={!isBookReady || isLoading}
-                    className="p-3 text-xs bg-navy-900 hover:bg-navy-850 border border-navy-800 hover:border-navy-700 text-slate-300 hover:text-white rounded-md text-left transition-colors font-medium disabled:opacity-50 cursor-pointer"
-                  >
-                    • {prompt}
-                  </button>
-                ))}
-              </div>
+          <div className="mx-auto max-w-2xl px-4 py-16 sm:px-6">
+            <div className="text-center">
+              <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-accent-500 to-accent-700 text-white shadow-glow">
+                <Sparkles className="h-5 w-5" aria-hidden="true" />
+              </span>
+              <h2 className="mt-4 text-xl font-semibold tracking-tight text-ink">
+                Ask anything about this book
+              </h2>
+              <p className="mx-auto mt-2 max-w-md text-ui text-ink-soft">
+                Every answer is grounded in{' '}
+                <span className="font-medium text-ink">{book.title}</span> and cites the pages it
+                came from.
+              </p>
             </div>
+
+            <ul className="mt-8 grid gap-2 sm:grid-cols-2">
+              {EXAMPLE_PROMPTS.map((prompt) => (
+                <li key={prompt}>
+                  <button
+                    onClick={() => isBookReady && !isLoading && onSendMessage(prompt)}
+                    disabled={!isBookReady || isLoading}
+                    className="w-full cursor-pointer rounded-xl border border-edge bg-surface-1 px-4 py-3.5 text-left text-ui text-ink-soft transition-all duration-200 hover:border-accent-600 hover:bg-surface-2 hover:text-ink active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {prompt}
+                  </button>
+                </li>
+              ))}
+            </ul>
           </div>
         ) : (
-          <div className="divide-y divide-navy-800/40">
+          <div className="divide-y divide-edge">
             {messages.map((msg) => (
-              <ChatMessage
-                key={msg.id}
-                message={msg}
-                onSelectCitation={onSelectCitation}
-              />
+              <ChatMessage key={msg.id} message={msg} onSelectCitation={onSelectCitation} />
             ))}
-            {isLoading && (
-              <div className="py-4 px-4 bg-transparent">
-                <div className="max-w-3xl mx-auto flex items-center gap-3 text-xs text-slate-400">
-                  <Loader2 className="w-4 h-4 text-brand-500 animate-spin" />
-                  <span>Searching book vectors & generating grounded answer...</span>
-                </div>
-              </div>
-            )}
+            {isLoading && <ThinkingRow />}
             <div ref={messagesEndRef} />
           </div>
         )}
       </div>
 
-      {/* Input Form Bar */}
-      <div className="p-4 border-t border-navy-800 bg-navy-900">
-        <form onSubmit={handleSubmit} className="max-w-3xl mx-auto">
+      <div className="shrink-0 border-t border-edge bg-surface-1/90 px-4 py-4 backdrop-blur-xl sm:px-6">
+        <form onSubmit={handleSubmit} className="mx-auto max-w-3xl">
           {!isBookReady && (
-            <div className="mb-2 flex items-center gap-2 text-xs text-amber-400 bg-amber-950/30 border border-amber-900/40 p-2 rounded-md">
-              <AlertCircle className="w-4 h-4 shrink-0" />
+            <p
+              role="status"
+              className="mb-2.5 flex items-start gap-2 rounded-xl border border-warn/25 bg-warn/10 px-3 py-2.5 text-meta text-warn"
+            >
+              <AlertCircle className="mt-px h-4 w-4 shrink-0" aria-hidden="true" />
               <span>
-                Question input is disabled while <strong>{book.title}</strong> is being processed. It will activate when status is Ready.
+                <strong className="font-medium">{book.title}</strong> is still processing. Questions
+                unlock once it is ready.
               </span>
-            </div>
+            </p>
           )}
 
-          <div className="relative flex items-center">
+          <div className="flex items-end gap-2 rounded-2xl border border-edge bg-surface-2 p-2 transition-colors duration-200 focus-within:border-accent-600">
+            <label htmlFor="question" className="sr-only">
+              Ask a question about {book.title}
+            </label>
             <input
+              id="question"
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               disabled={!isBookReady || isLoading}
-              placeholder={
-                isBookReady
-                  ? `Ask a question about ${book.title}...`
-                  : 'Processing document...'
-              }
-              className="w-full bg-navy-950 border border-navy-700 focus:border-brand-500 text-slate-200 text-xs sm:text-sm rounded-md py-3 pl-4 pr-12 focus:outline-none placeholder:text-slate-500 disabled:opacity-50 transition-colors"
+              placeholder={isBookReady ? `Ask about ${book.title}…` : 'Processing document…'}
+              className="min-h-[2.75rem] flex-1 bg-transparent px-3 text-body text-ink outline-none placeholder:text-ink-muted disabled:opacity-50"
             />
             <button
               type="submit"
               disabled={!input.trim() || !isBookReady || isLoading}
-              className="absolute right-2.5 bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-white p-1.5 rounded-md transition-colors"
+              aria-label="Send question"
+              className="grid h-11 w-11 shrink-0 cursor-pointer place-items-center rounded-xl bg-accent-600 text-white transition-all duration-200 hover:bg-accent-500 active:scale-95 disabled:cursor-not-allowed disabled:bg-surface-raised disabled:text-ink-muted"
             >
-              <Send className="w-4 h-4" />
+              <Send className="h-4 w-4" aria-hidden="true" />
             </button>
           </div>
         </form>

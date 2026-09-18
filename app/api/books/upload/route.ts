@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { registerMemoryBook } from '@/lib/rag/store';
-import { storePdf } from '@/lib/pdf-cache';
+import { storePdf, deletePdf, pdfObjectPath } from '@/lib/pdf-cache';
 import { RAG_CONFIG } from '@/lib/config';
 import { jsonError, routeError } from '@/lib/http';
 import { Book } from '@/lib/types';
@@ -51,10 +51,17 @@ export async function POST(req: NextRequest) {
     const title = file.name.replace(/\.[^/.]+$/, '').replace(/_/g, ' ');
     const book = newBook(id, title, file.name, now);
 
+    // The bytes are stored before the row exists. Ingestion re-reads the
+    // original on every step, so a book row whose PDF never landed can never be
+    // completed - a failed write has to fail the upload, not leave a row behind.
+    await storePdf(id, buffer);
+    book.file_url = pdfObjectPath(id);
+
     if (isSupabaseConfigured()) {
       const { error } = await supabaseAdmin.from('books').insert(book);
       if (error) {
         console.error('[books/upload] initial insert failed:', error.message);
+        await deletePdf(id);
         return jsonError('Could not create the book record. Please try again.', 500);
       }
     }
@@ -62,7 +69,6 @@ export async function POST(req: NextRequest) {
     // Ingestion is not started here. The client drives it step by step via
     // POST /api/books/[id]/ingest so no single request has to outlive a
     // serverless time limit.
-    storePdf(id, buffer);
     registerMemoryBook(book);
 
     return NextResponse.json({ book });

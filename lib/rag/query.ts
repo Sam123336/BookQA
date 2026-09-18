@@ -1,4 +1,5 @@
 import { generateQueryEmbedding, generateGroundedAnswer } from '../ai/llm';
+import { ProviderName } from '../ai/provider';
 import { getAIProvider } from '../ai/provider';
 import { validateAndDeduplicateCitations } from '../ai/citations';
 import { supabaseAdmin, isSupabaseConfigured } from '../supabase';
@@ -80,11 +81,12 @@ async function coverageChunks(bookId: string, limit: number): Promise<BookChunk[
 async function answerFrom(
   bookTitle: string,
   prompt: string,
-  chunks: BookChunk[]
+  chunks: BookChunk[],
+  provider?: ProviderName
 ): Promise<AnswerResult> {
   if (chunks.length === 0) return refusal();
 
-  const response = await generateGroundedAnswer(bookTitle, prompt, chunks);
+  const response = await generateGroundedAnswer(bookTitle, prompt, chunks, provider);
   const citations = validateAndDeduplicateCitations(response, chunks);
 
   return {
@@ -107,31 +109,38 @@ function greeting(bookTitle: string): AnswerResult {
 async function answerBySearch(
   bookId: string,
   bookTitle: string,
-  question: string
+  question: string,
+  provider?: ProviderName
 ): Promise<AnswerResult> {
   const embedding = await generateQueryEmbedding(question);
-  const { minSimilarity } = getAIProvider().config;
+  const { minSimilarity } = getAIProvider('embed').config;
 
   const confident = await searchChunks(bookId, embedding, minSimilarity, RAG_CONFIG.TOP_K);
   const chunks = confident.length > 0
     ? confident
     : await searchChunks(bookId, embedding, NO_THRESHOLD, RAG_CONFIG.TOP_K);
 
-  return answerFrom(bookTitle, question, chunks);
+  return answerFrom(bookTitle, question, chunks, provider);
 }
 
 export async function queryBookQuestion(
   bookId: string,
   bookTitle: string,
-  question: string
+  question: string,
+  provider?: ProviderName
 ): Promise<AnswerResult> {
   if (CHITCHAT_RE.test(question)) {
     return greeting(bookTitle);
   }
 
   if (SUMMARY_RE.test(question)) {
-    return answerFrom(bookTitle, SUMMARY_PROMPT, await coverageChunks(bookId, RAG_CONFIG.SUMMARY_CHUNKS));
+    return answerFrom(
+      bookTitle,
+      SUMMARY_PROMPT,
+      await coverageChunks(bookId, RAG_CONFIG.SUMMARY_CHUNKS),
+      provider
+    );
   }
 
-  return answerBySearch(bookId, bookTitle, question);
+  return answerBySearch(bookId, bookTitle, question, provider);
 }

@@ -79,3 +79,11 @@ export interface IngestionStatusUpdate {
   totalChunks: number;
   errorMessage?: string;
 }
+
+// A chat provider offered by the model picker. Answers only - the embedding
+// model is fixed, because the stored vectors were built with it.
+export interface ChatProvider {
+  name: string;
+  model: string;
+  label: string;
+}

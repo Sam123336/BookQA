@@ -3,11 +3,16 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { queryBookQuestion } from '@/lib/rag/query';
 import { getMemoryBook } from '@/lib/rag/store';
 import { jsonError, routeError } from '@/lib/http';
+import { availableChatProviders } from '@/lib/ai/provider';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { bookId, sessionId: reqSessionId, question } = body;
+
+    // An unknown or unreachable pick falls back to the configured default rather
+    // than failing the question - the picker is a preference, not a contract.
+    const provider = availableChatProviders(process.env).find(p => p.name === body.provider)?.name;
 
     if (!bookId || !question || typeof question !== 'string' || !question.trim()) {
       return jsonError('bookId and valid non-empty question are required.', 400);
@@ -59,7 +64,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Execute Vector RAG Search & LLM Answer Generation
-    const result = await queryBookQuestion(bookId, bookTitle, question.trim());
+    const result = await queryBookQuestion(bookId, bookTitle, question.trim(), provider);
 
     // Save messages to database if Supabase is active
     if (isSupabaseConfigured() && sessionId) {

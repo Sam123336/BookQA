@@ -7,7 +7,7 @@ async function main() {
   if (!bookId || questions.length === 0) {
     throw new Error('Usage: npm run calibrate -- <bookId> "question" ["another question"]');
   }
-  const { config } = getAIProvider();
+  const { config } = getAIProvider('embed');
   console.log(`${config.name} / ${config.embedModel} - current floor ${config.minSimilarity}\n`);
 
   for (const q of questions) {

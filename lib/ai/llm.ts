@@ -1,6 +1,6 @@
 import { RAG_CONFIG } from '../config';
 import { AppError } from '../errors';
-import { getAIProvider } from './provider';
+import { getAIProvider, ProviderName } from './provider';
 import { StructuredLLMResponse, BookChunk } from '../types';
 
 const RETRYABLE_STATUS = new Set([408, 409, 429, 500, 502, 503, 504]);
@@ -51,7 +51,7 @@ export async function generateBatchEmbeddings(
   onBatch?: (embedded: number, total: number) => void | Promise<void>,
   maxAttempts: number = RAG_CONFIG.EMBEDDING_MAX_RETRIES
 ): Promise<number[][]> {
-  const { config, client } = getAIProvider();
+  const { config, client } = getAIProvider('embed');
 
   const results: number[][] = [];
   const batchSize = RAG_CONFIG.EMBEDDING_BATCH_SIZE;
@@ -162,7 +162,8 @@ You MUST respond strictly in valid JSON format matching this JSON schema:
 export async function generateGroundedAnswer(
   bookTitle: string,
   question: string,
-  retrievedChunks: BookChunk[]
+  retrievedChunks: BookChunk[],
+  provider?: ProviderName
 ): Promise<StructuredLLMResponse> {
   if (retrievedChunks.length === 0) {
     return {
@@ -171,7 +172,7 @@ export async function generateGroundedAnswer(
     };
   }
 
-  const { config, client } = getAIProvider();
+  const { config, client } = getAIProvider('chat', provider);
 
   // Format retrieved chunks as context block with page markers
   const contextBlock = retrievedChunks
@@ -212,7 +213,7 @@ ${question}`;
       citations: Array.isArray(parsed.citations) ? parsed.citations : [],
     };
   } catch (error: any) {
-    const modelVar = config.name === 'gemini' ? 'GEMINI_LLM_MODEL' : 'OPENAI_LLM_MODEL';
+    const modelVar = `${config.name.toUpperCase()}_LLM_MODEL`;
 
     if (error?.status === 429) {
       const wait = retryAfterMs(error);

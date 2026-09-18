@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Book, Message, Citation } from '@/lib/types';
+import { Book, Message, Citation, ChatProvider } from '@/lib/types';
 import { Header } from '@/components/Header';
 import { Sidebar } from '@/components/Sidebar';
 import { IngestionProgress } from '@/components/IngestionProgress';
@@ -19,7 +19,33 @@ export default function HomePage() {
   const [isLoadingAnswer, setIsLoadingAnswer] = useState(false);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [activeCitation, setActiveCitation] = useState<Citation | null>(null);
+  const [providers, setProviders] = useState<ChatProvider[]>([]);
+  const [provider, setProvider] = useState('');
   const autoSummarized = useRef<Set<string>>(new Set());
+
+  // Which model writes the answers. Remembered per browser, and the server falls
+  // back to its own default if the remembered one is no longer configured.
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/providers');
+        if (!res.ok) return;
+        const list: ChatProvider[] = (await res.json()).providers || [];
+        setProviders(list);
+
+        let saved: string | null = null;
+        try { saved = localStorage.getItem('bookqa.provider'); } catch {}
+        setProvider(list.some(p => p.name === saved) ? saved! : list[0]?.name ?? '');
+      } catch (err) {
+        console.error('Failed to load providers:', err);
+      }
+    })();
+  }, []);
+
+  const handleSelectProvider = (name: string) => {
+    setProvider(name);
+    try { localStorage.setItem('bookqa.provider', name); } catch {}
+  };
 
   // 1. Fetch Books List
   const fetchBooks = useCallback(async () => {
@@ -147,6 +173,7 @@ export default function HomePage() {
           bookId: selectedBook.id,
           sessionId: activeSessionId,
           question,
+          provider,
         }),
       });
 
@@ -212,6 +239,9 @@ export default function HomePage() {
         onSelectBook={setSelectedBook}
         onOpenUpload={() => setIsUploadOpen(true)}
         onDeleteBook={handleDeleteBook}
+        providers={providers}
+        provider={provider}
+        onSelectProvider={handleSelectProvider}
       />
 
       {selectedBook && <IngestionProgress book={selectedBook} />}

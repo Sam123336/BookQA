@@ -7,7 +7,7 @@ import { ExtractedPage, BookChunk, StructuredLLMResponse } from '../lib/types';
 import { RAG_CONFIG } from '../lib/config';
 import { storePdf, getPdf, deletePdf, cacheStats } from '../lib/pdf-cache';
 import { AppError } from '../lib/errors';
-import { resolveProvider } from '../lib/ai/provider';
+import { resolveProvider, availableChatProviders } from '../lib/ai/provider';
 import { SUMMARY_RE, strideSample, CHITCHAT_RE } from '../lib/rag/query';
 
 async function runRAGTestSuite() {
@@ -152,6 +152,52 @@ async function runRAGTestSuite() {
   assert(
     resolveProvider({ GEMINI_API_KEY: 'g', MIN_SIMILARITY: '' }).minSimilarity === 0.55,
     "Empty MIN_SIMILARITY falls back to the provider default instead of 0"
+  );
+
+  // Groq serves chat but has no /embeddings endpoint. If a Groq key ever leaked
+  // into the embed role, ingestion would 404 and the similarity floor would read 0.
+  const groqEnv = { GROQ_API_KEY: 'gsk-t', GEMINI_API_KEY: 'g' };
+  assert(resolveProvider(groqEnv, 'chat').name === 'groq', "Groq key takes the chat role");
+  assert(resolveProvider(groqEnv, 'embed').name === 'gemini', "Embedding falls through to Gemini");
+  assert(
+    resolveProvider(groqEnv, 'embed').minSimilarity === 0.55,
+    "Similarity floor follows the embedding model, not the Groq chat model"
+  );
+  assert(
+    resolveProvider({ ...groqEnv, AI_PROVIDER: 'groq' }, 'embed').name === 'gemini',
+    "AI_PROVIDER=groq still cannot force Groq onto the embed role"
+  );
+  assert(
+    resolveProvider({ GROQ_API_KEY: 'gsk-t', OPENAI_API_KEY: 'sk-t' }, 'embed').name === 'openai',
+    "Embedding falls through to OpenAI when that is the key on hand"
+  );
+  assert(
+    ((): boolean => {
+      try { resolveProvider({ GROQ_API_KEY: 'gsk-t' }, 'embed'); return false; }
+      catch (e: any) { return /no embeddings endpoint/i.test(e.message); }
+    })(),
+    "A Groq-only .env fails embedding with a message that names the reason"
+  );
+  assert(resolveProvider({ GEMINI_API_KEY: 'g' }, 'chat').name === 'gemini', "No Groq key, no change in behaviour");
+
+  // The picker offers exactly what the deployment can reach - no more (a dead
+  // option fails on the first question) and no fewer.
+  const all = availableChatProviders({ GROQ_API_KEY: 'gsk-t', OPENAI_API_KEY: 'sk-t', GEMINI_API_KEY: 'g' });
+  assert(all.map(p => p.name).join() === 'groq,openai,gemini', "Every keyed chat provider is offered");
+  assert(all[0].label === 'gpt-oss-120b · groq', "Label drops the vendor prefix from the model id");
+  assert(
+    availableChatProviders({ GEMINI_API_KEY: 'g' }).length === 1,
+    "A provider with no key is not offered"
+  );
+  assert(availableChatProviders({}).length === 0, "No keys means an empty picker, not a crash");
+  assert(
+    availableChatProviders({ OPENAI_API_KEY: 'not-a-key', GEMINI_API_KEY: 'g' })
+      .map(p => p.name).join() === 'gemini',
+    "A key that cannot resolve is left out instead of offered and then failing"
+  );
+  assert(
+    resolveProvider({ GEMINI_API_KEY: 'g', GROQ_API_KEY: 'gsk-t', AI_PROVIDER: 'groq' }, 'chat', 'gemini').name === 'gemini',
+    "A reader's pick overrides the AI_PROVIDER default for that request"
   );
 
   console.log("\n--- TEST 7: Summary Coverage Sampling ---");

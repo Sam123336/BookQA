@@ -5,7 +5,7 @@ import { RAG_CONFIG } from '../lib/config';
 
 async function main() {
   if (!isSupabaseConfigured()) throw new Error('Supabase is not configured.');
-  const { config: provider } = getAIProvider();
+  const { config: provider } = getAIProvider('embed');
   console.log(`Provider: ${provider.name} / ${provider.embedModel} @ ${RAG_CONFIG.EMBEDDING_DIM} dims\n`);
 
   const { data: books, error: bErr } = await supabaseAdmin

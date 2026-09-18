@@ -10,16 +10,26 @@ interface IngestionProgressProps {
 
 const STEP_LABEL: Record<string, string> = {
   PENDING: 'Queued for processing',
-  EXTRACTING: 'Extracting text page by page',
-  EMBEDDING: 'Generating embeddings',
-  INDEXING: 'Indexing vectors for search',
+  EXTRACTING: 'Reading the document',
+  EMBEDDING: 'Understanding the text',
+  INDEXING: 'Building the search index',
   FAILED: 'Ingestion failed',
 };
+
+// Chunks are produced page by page in order, so the share of chunks done is a
+// faithful stand-in for the share of pages done - and pages are what a reader
+// recognises. Exact page tracking would need another column on `books`.
+function pagesDone(book: Book): number | null {
+  if (book.page_count <= 0 || book.total_chunks <= 0) return null;
+  const ratio = book.processed_chunks / book.total_chunks;
+  return Math.min(book.page_count, Math.round(ratio * book.page_count));
+}
 
 export const IngestionProgress: React.FC<IngestionProgressProps> = ({ book }) => {
   if (book.status === 'COMPLETED') return null;
 
   const isFailed = book.status === 'FAILED';
+  const pages = pagesDone(book);
   const percent =
     book.total_chunks > 0
       ? Math.min(100, Math.round((book.processed_chunks / book.total_chunks) * 100))
@@ -55,9 +65,11 @@ export const IngestionProgress: React.FC<IngestionProgressProps> = ({ book }) =>
           <div className="w-full sm:w-64">
             <div className="mb-1.5 flex items-center justify-between text-meta text-ink-muted">
               <span className="tabular">
-                {book.total_chunks > 0
-                  ? `${book.processed_chunks} / ${book.total_chunks} chunks`
-                  : 'Preparing…'}
+                {pages !== null
+                  ? `${pages} / ${book.page_count} pages`
+                  : book.page_count > 0
+                    ? `${book.page_count} pages found`
+                    : 'Preparing…'}
               </span>
               <span className="tabular font-medium text-ink-soft">{percent}%</span>
             </div>

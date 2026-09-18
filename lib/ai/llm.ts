@@ -3,11 +3,53 @@ import { AppError } from '../errors';
 import { getAIProvider } from './provider';
 import { StructuredLLMResponse, BookChunk } from '../types';
 
+const RETRYABLE_STATUS = new Set([408, 409, 429, 500, 502, 503, 504]);
+
+/**
+ * Providers say how long to wait. Prefer that over guessing: Gemini returns
+ * "Please retry in 1.9s" in the message and sometimes a Retry-After header.
+ */
+export function retryAfterMs(error: any): number | null {
+  const header = error?.headers?.get?.('retry-after') ?? error?.headers?.['retry-after'];
+  if (header !== undefined && header !== null) {
+    const seconds = Number(header);
+    if (Number.isFinite(seconds)) return Math.ceil(seconds * 1000);
+  }
+  const match = /retry in ([\d.]+)\s*s/i.exec(String(error?.message ?? ''));
+  return match ? Math.ceil(parseFloat(match[1]) * 1000) : null;
+}
+
+export function nextDelayMs(error: any, attempt: number, baseDelayMs: number): number {
+  const hinted = retryAfterMs(error);
+  const backoff = baseDelayMs * Math.pow(2, attempt);
+  const chosen = Math.max(hinted ?? backoff, 250);
+  return Math.min(chosen, RAG_CONFIG.RETRY_MAX_DELAY_MS) + Math.floor(Math.random() * 250);
+}
+
+async function withRetry<T>(
+  maxAttempts: number,
+  baseDelayMs: number,
+  run: () => Promise<T>
+): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await run();
+    } catch (error: any) {
+      const isLast = attempt + 1 >= maxAttempts;
+      if (isLast || !RETRYABLE_STATUS.has(error?.status)) throw error;
+      await new Promise(res => setTimeout(res, nextDelayMs(error, attempt, baseDelayMs)));
+    }
+  }
+}
+
 /**
  * Generates embeddings in batches of 50-100 texts to minimize API overhead.
  * Implements exponential backoff retry handling for rate limits.
  */
-export async function generateBatchEmbeddings(texts: string[]): Promise<number[][]> {
+export async function generateBatchEmbeddings(
+  texts: string[],
+  onBatch?: (embedded: number, total: number) => void | Promise<void>
+): Promise<number[][]> {
   const { config, client } = getAIProvider();
 
   const results: number[][] = [];
@@ -15,40 +57,43 @@ export async function generateBatchEmbeddings(texts: string[]): Promise<number[]
 
   for (let i = 0; i < texts.length; i += batchSize) {
     const batchTexts = texts.slice(i, i + batchSize);
-    let attempt = 0;
-    let success = false;
 
-    while (!success && attempt < RAG_CONFIG.EMBEDDING_MAX_RETRIES) {
-      try {
-        const response = await client.embeddings.create({
-          model: config.embedModel,
-          input: batchTexts,
-          dimensions: RAG_CONFIG.EMBEDDING_DIM,
-        });
+    try {
+      const vectors = await withRetry(
+        RAG_CONFIG.EMBEDDING_MAX_RETRIES,
+        RAG_CONFIG.EMBEDDING_RETRY_DELAY_MS,
+        async () => {
+          const response = await client.embeddings.create({
+            model: config.embedModel,
+            input: batchTexts,
+            dimensions: RAG_CONFIG.EMBEDDING_DIM,
+          });
+          return response.data.map(d => d.embedding);
+        }
+      );
 
-        const batchEmbeddings = response.data.map(d => d.embedding);
-        const got = batchEmbeddings[0]?.length;
-        if (got !== RAG_CONFIG.EMBEDDING_DIM) {
-          throw Object.assign(
-            new Error(
-              `${config.name}/${config.embedModel} returned ${got}-dim vectors, but the ` +
-              `database column is VECTOR(${RAG_CONFIG.EMBEDDING_DIM}). Pick a model that ` +
-              `supports that width, or widen the column and the match_book_chunks RPC.`
-            ),
-            { status: 400 }
-          );
-        }
-        results.push(...batchEmbeddings);
-        success = true;
-      } catch (error: any) {
-        attempt++;
-        if (attempt >= RAG_CONFIG.EMBEDDING_MAX_RETRIES || error.status === 401 || error.status === 400) {
-          throw new Error(`${config.name} embeddings failed: ${error.message}`);
-        }
-        // Exponential backoff wait
-        const delay = RAG_CONFIG.EMBEDDING_RETRY_DELAY_MS * Math.pow(2, attempt);
-        await new Promise(res => setTimeout(res, delay));
+      const got = vectors[0]?.length;
+      if (got !== RAG_CONFIG.EMBEDDING_DIM) {
+        throw new AppError(
+          `${config.name}/${config.embedModel} returned ${got}-dim vectors, but the ` +
+          `database column is VECTOR(${RAG_CONFIG.EMBEDDING_DIM}). Pick a model that ` +
+          `supports that width, or widen the column and the match_book_chunks RPC.`,
+          500
+        );
       }
+
+      results.push(...vectors);
+      await onBatch?.(results.length, texts.length);
+    } catch (error: any) {
+      if (error instanceof AppError) throw error;
+      if (error?.status === 429) {
+        throw new AppError(
+          `${config.name} rate limit reached while embedding (batch ${Math.floor(i / batchSize) + 1} ` +
+          `of ${Math.ceil(texts.length / batchSize)}). ${error.message}`,
+          429
+        );
+      }
+      throw new AppError(`${config.name} embeddings failed: ${error?.message ?? error}`, 502);
     }
   }
 
@@ -136,44 +181,46 @@ ${contextBlock}
 USER QUESTION:
 ${question}`;
 
-  for (let attempt = 0; ; attempt++) {
-    try {
-      const response = await client.chat.completions.create({
-        model: config.chatModel,
-        response_format: { type: "json_object" },
-        temperature: 0.1, // Low temperature for high factual precision
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: userPrompt }
-        ],
-      });
-
-      const content = response.choices[0]?.message?.content;
-      if (!content) {
-        return { answer: RAG_CONFIG.REFUSAL_RESPONSE, citations: [] };
+  try {
+    const content = await withRetry(
+      RAG_CONFIG.LLM_MAX_RETRIES,
+      RAG_CONFIG.LLM_RETRY_DELAY_MS,
+      async () => {
+        const response = await client.chat.completions.create({
+          model: config.chatModel,
+          response_format: { type: 'json_object' },
+          temperature: 0.1,
+          messages: [
+            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'user', content: userPrompt },
+          ],
+        });
+        return response.choices[0]?.message?.content ?? null;
       }
+    );
 
-      const parsed: StructuredLLMResponse = JSON.parse(content);
-      return {
-        answer: parsed.answer || RAG_CONFIG.REFUSAL_RESPONSE,
-        citations: Array.isArray(parsed.citations) ? parsed.citations : []
-      };
-    } catch (error: any) {
-      const retryable = error.status === 429 || error.status === 503;
-      if (!retryable || attempt + 1 >= RAG_CONFIG.LLM_MAX_RETRIES) {
-        if (error.status === 429) {
-          throw new AppError(
-            `${config.name} rate limit reached (429) for ${config.chatModel}. ` +
-            `Free-tier quotas are per-minute - wait a moment and ask again, or set ` +
-            `${config.name === 'gemini' ? 'GEMINI_LLM_MODEL' : 'OPENAI_LLM_MODEL'} to a model with more headroom.`
-          );
-        }
-        if (error.status === 503) {
-          throw new AppError(`${config.name} model ${config.chatModel} is overloaded (503). Try again shortly.`, 503);
-        }
-        throw new Error(`${config.name} answer generation failed: ${error.message}`);
-      }
-      await new Promise(res => setTimeout(res, RAG_CONFIG.LLM_RETRY_DELAY_MS * Math.pow(2, attempt)));
+    if (!content) return { answer: RAG_CONFIG.REFUSAL_RESPONSE, citations: [] };
+
+    const parsed: StructuredLLMResponse = JSON.parse(content);
+    return {
+      answer: parsed.answer || RAG_CONFIG.REFUSAL_RESPONSE,
+      citations: Array.isArray(parsed.citations) ? parsed.citations : [],
+    };
+  } catch (error: any) {
+    const modelVar = config.name === 'gemini' ? 'GEMINI_LLM_MODEL' : 'OPENAI_LLM_MODEL';
+
+    if (error?.status === 429) {
+      const wait = retryAfterMs(error);
+      throw new AppError(
+        `${config.name} rate limit reached for ${config.chatModel}` +
+        (wait ? `; it asked to retry in ${Math.ceil(wait / 1000)}s` : '') +
+        `. Quotas are per model - set ${modelVar} to one with more headroom, or enable billing.`,
+        429
+      );
     }
+    if (error?.status === 503) {
+      throw new AppError(`${config.name} model ${config.chatModel} is overloaded. Try again shortly.`, 503);
+    }
+    throw new AppError(`${config.name} answer generation failed: ${error?.message ?? error}`, 502);
   }
 }

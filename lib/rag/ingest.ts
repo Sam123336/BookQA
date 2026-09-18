@@ -52,7 +52,10 @@ export async function processBookIngestion(
 
     // 4. Batch Embedding Generation
     const chunkTexts = chunks.map(c => c.content);
-    const embeddings = await generateBatchEmbeddings(chunkTexts);
+    const embeddings = await generateBatchEmbeddings(chunkTexts, async (embedded, total) => {
+      await updateBookStatus(bookId, 'EMBEDDING', embedded, total);
+      if (onProgress) onProgress(embedded, total, 'EMBEDDING');
+    });
 
     // Attach embeddings to chunks
     for (let i = 0; i < chunks.length; i++) {

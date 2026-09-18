@@ -2,7 +2,7 @@ import { cleanPdfText } from '../lib/pdf/extractor';
 import { toUint8Array } from '../lib/buffer';
 import { createPageAwareChunks } from '../lib/pdf/chunker';
 import { validateAndDeduplicateCitations } from '../lib/ai/citations';
-import { generateGroundedAnswer } from '../lib/ai/llm';
+import { generateGroundedAnswer, retryAfterMs, nextDelayMs } from '../lib/ai/llm';
 import { ExtractedPage, BookChunk, StructuredLLMResponse } from '../lib/types';
 import { RAG_CONFIG } from '../lib/config';
 import { storePdf, getPdf, deletePdf, cacheStats } from '../lib/pdf-cache';
@@ -233,7 +233,58 @@ async function runRAGTestSuite() {
 
   for (let i = 1; i <= 6; i++) deletePdf(uuid(i));
 
-  console.log("\n--- TEST 11: Error Surfacing ---");
+  console.log("\n--- TEST 11: Page Progress ---");
+
+  const asBook = (page_count: number, processed_chunks: number, total_chunks: number) =>
+    ({ page_count, processed_chunks, total_chunks }) as any;
+
+  const pagesOf = (b: any) =>
+    b.page_count <= 0 || b.total_chunks <= 0
+      ? null
+      : Math.min(b.page_count, Math.round((b.processed_chunks / b.total_chunks) * b.page_count));
+
+  assert(pagesOf(asBook(350, 0, 1400)) === 0, "Progress starts at page 0");
+  assert(pagesOf(asBook(350, 700, 1400)) === 175, "Half the chunks reads as half the pages");
+  assert(pagesOf(asBook(350, 1400, 1400)) === 350, "All chunks done reports every page");
+  assert(pagesOf(asBook(350, 1401, 1400)) === 350, "Overshoot is clamped to the real page count");
+  assert(pagesOf(asBook(0, 0, 0)) === null, "Before extraction finishes there is no page figure");
+  assert(pagesOf(asBook(350, 0, 0)) === null, "No chunks yet means no page figure (no divide-by-zero)");
+
+  console.log("\n--- TEST 12: Retry Backoff ---");
+
+  assert(
+    retryAfterMs({ message: 'Quota exceeded. Please retry in 1.893003718s.' }) === 1894,
+    "Gemini's 'retry in Xs' hint is parsed out of the message"
+  );
+  assert(
+    retryAfterMs({ headers: { 'retry-after': '30' } }) === 30000,
+    "Retry-After header is honoured"
+  );
+  assert(retryAfterMs({ message: 'boom' }) === null, "No hint present yields null, not NaN");
+
+  const hinted = nextDelayMs({ message: 'Please retry in 42s' }, 0, 1000);
+  assert(
+    hinted >= 42000 && hinted < 42000 + 300,
+    "Server hint wins over the exponential backoff",
+    `got ${hinted}`
+  );
+
+  const blind = nextDelayMs({ message: 'no hint' }, 3, 1000);
+  assert(blind >= 8000 && blind < 8000 + 300, `Backoff doubles per attempt (got ${blind})`);
+
+  const capped = nextDelayMs({ message: 'Please retry in 9999s' }, 0, 1000);
+  assert(
+    capped <= RAG_CONFIG.RETRY_MAX_DELAY_MS + 250,
+    "An absurd server hint is capped by RETRY_MAX_DELAY_MS",
+    `got ${capped}`
+  );
+
+  assert(
+    RAG_CONFIG.EMBEDDING_MAX_RETRIES > RAG_CONFIG.LLM_MAX_RETRIES,
+    "Background ingestion is more patient than an interactive question"
+  );
+
+  console.log("\n--- TEST 13: Error Surfacing ---");
 
   let appErr: unknown;
   try { resolveProvider({}); } catch (e) { appErr = e; }

@@ -15,6 +15,30 @@ export type ProviderConfig = {
 
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
 
+// Gemini returns errors as a JSON *array* ([{error:{...}}]), which the OpenAI SDK
+// cannot parse - every failure arrives as "429 status code (no body)" with the
+// real message and its retry hint discarded. Unwrap it into the object shape the
+// SDK expects so callers can read both.
+const unwrapGeminiError: typeof fetch = async (input, init) => {
+  const res = await fetch(input, init);
+  if (res.ok) return res;
+
+  const body = await res.text();
+  let payload = body;
+  try {
+    const parsed = JSON.parse(body);
+    if (Array.isArray(parsed) && parsed[0]?.error) payload = JSON.stringify(parsed[0]);
+  } catch {
+    // not JSON; pass the original body through untouched
+  }
+
+  return new Response(payload, {
+    status: res.status,
+    statusText: res.statusText,
+    headers: { 'content-type': 'application/json' },
+  });
+};
+
 const GEMINI_DEFAULTS = {
   embedModel: 'gemini-embedding-001',
   chatModel: 'gemini-3.5-flash',
@@ -91,7 +115,12 @@ export function getAIProvider(): { config: ProviderConfig; client: OpenAI } {
     const config = resolveProvider(process.env);
     cached = {
       config,
-      client: new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL }),
+      client: new OpenAI({
+        apiKey: config.apiKey,
+        baseURL: config.baseURL,
+        maxRetries: 0,
+        fetch: config.name === 'gemini' ? unwrapGeminiError : undefined,
+      }),
     };
   }
   return cached;

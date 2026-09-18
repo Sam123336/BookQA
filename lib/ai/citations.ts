@@ -1,4 +1,5 @@
 import { BookChunk, Citation, StructuredLLMResponse } from '../types';
+import { RAG_CONFIG } from '../config';
 
 /**
  * Validates, deduplicates, and resolves citations against actual retrieved evidence chunks.
@@ -8,8 +9,7 @@ export function validateAndDeduplicateCitations(
   llmResponse: StructuredLLMResponse,
   retrievedChunks: BookChunk[]
 ): Citation[] {
-  // If the answer indicates refusal / insufficient evidence, return empty citations
-  if (!llmResponse.answer || llmResponse.answer.includes("couldn't find enough information")) {
+  if (!llmResponse.answer || llmResponse.answer.includes(RAG_CONFIG.REFUSAL_RESPONSE)) {
     return [];
   }
 

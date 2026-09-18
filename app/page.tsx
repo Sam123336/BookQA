@@ -1,13 +1,15 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Book, Message, Citation } from '@/lib/types';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Book, Message, Citation, ChatProvider } from '@/lib/types';
 import { Header } from '@/components/Header';
 import { Sidebar } from '@/components/Sidebar';
 import { IngestionProgress } from '@/components/IngestionProgress';
 import { ChatWindow } from '@/components/ChatWindow';
 import { UploadModal } from '@/components/UploadModal';
 import { SourcePanel } from '@/components/SourcePanel';
+
+const AUTO_SUMMARY_PROMPT = 'Summarize this book';
 
 export default function HomePage() {
   const [books, setBooks] = useState<Book[]>([]);
@@ -17,6 +19,33 @@ export default function HomePage() {
   const [isLoadingAnswer, setIsLoadingAnswer] = useState(false);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [activeCitation, setActiveCitation] = useState<Citation | null>(null);
+  const [providers, setProviders] = useState<ChatProvider[]>([]);
+  const [provider, setProvider] = useState('');
+  const autoSummarized = useRef<Set<string>>(new Set());
+
+  // Which model writes the answers. Remembered per browser, and the server falls
+  // back to its own default if the remembered one is no longer configured.
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/providers');
+        if (!res.ok) return;
+        const list: ChatProvider[] = (await res.json()).providers || [];
+        setProviders(list);
+
+        let saved: string | null = null;
+        try { saved = localStorage.getItem('bookqa.provider'); } catch {}
+        setProvider(list.some(p => p.name === saved) ? saved! : list[0]?.name ?? '');
+      } catch (err) {
+        console.error('Failed to load providers:', err);
+      }
+    })();
+  }, []);
+
+  const handleSelectProvider = (name: string) => {
+    setProvider(name);
+    try { localStorage.setItem('bookqa.provider', name); } catch {}
+  };
 
   // 1. Fetch Books List
   const fetchBooks = useCallback(async () => {
@@ -40,44 +69,93 @@ export default function HomePage() {
     fetchBooks();
   }, [fetchBooks]);
 
-  // 2. Poll Status for Ingesting Books
-  useEffect(() => {
-    if (!selectedBook || selectedBook.status === 'COMPLETED' || selectedBook.status === 'FAILED') {
-      return;
-    }
+  // 2. Drive ingestion for the selected book.
+  //    Each call advances one bounded step, so this both reports progress and
+  //    performs the work. A chained timeout (not an interval) guarantees only
+  //    one step is ever in flight.
+  const bookId = selectedBook?.id;
+  const bookStatus = selectedBook?.status;
 
-    const interval = setInterval(async () => {
+  useEffect(() => {
+    if (!bookId || bookStatus === 'COMPLETED' || bookStatus === 'FAILED') return;
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+
+    const step = async () => {
+      let waitMs = 1200;
       try {
-        const res = await fetch(`/api/books/${selectedBook.id}`);
+        const res = await fetch(`/api/books/${bookId}/ingest`, { method: 'POST' });
+        const progress = await res.json();
+        if (cancelled) return;
+
         if (res.ok) {
-          const data = await res.json();
-          if (data.book) {
-            setSelectedBook(data.book);
-            setBooks(prev => prev.map(b => b.id === data.book.id ? data.book : b));
-          }
+          const patch = {
+            status: progress.status,
+            processed_chunks: progress.processed,
+            total_chunks: progress.total,
+            page_count: progress.pageCount,
+            error_message: progress.error ?? null,
+          };
+          setSelectedBook(prev => (prev && prev.id === bookId ? { ...prev, ...patch } : prev));
+          setBooks(prev => prev.map(b => (b.id === bookId ? { ...b, ...patch } : b)));
+
+          if (progress.done) return;
+          // Honour the provider's own backoff when it is rate limited.
+          if (progress.retryAfterMs) waitMs = Math.min(progress.retryAfterMs, 60000);
         }
-      } catch (err) {
-        console.error("Status polling error:", err);
+      } catch {
+        waitMs = 5000;
       }
-    }, 1500);
+      if (!cancelled) timer = setTimeout(step, waitMs);
+    };
 
-    return () => clearInterval(interval);
-  }, [selectedBook]);
+    step();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [bookId, bookStatus]);
 
-  // 3. Clear or Load Messages on Book Select Change
   useEffect(() => {
+    const book = selectedBook;
     setMessages([]);
     setSessionId(null);
     setActiveCitation(null);
-  }, [selectedBook?.id]);
+    if (!book || book.status !== 'COMPLETED') return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/books/${book.id}/session`);
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        if (cancelled) return;
+
+        if (data.messages?.length) {
+          setSessionId(data.sessionId);
+          setMessages(data.messages);
+          return;
+        }
+
+        if (autoSummarized.current.has(book.id)) return;
+        autoSummarized.current.add(book.id);
+        handleSendMessage(AUTO_SUMMARY_PROMPT, null);
+      } catch {
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [selectedBook?.id, selectedBook?.status]);
 
   // 4. Handle Question Submission
-  const handleSendMessage = async (question: string) => {
+  const handleSendMessage = async (question: string, forceSessionId?: string | null) => {
     if (!selectedBook) return;
+    const activeSessionId = forceSessionId !== undefined ? forceSessionId : sessionId;
 
     const userMessage: Message = {
       id: `user-${Date.now()}`,
-      session_id: sessionId || '',
+      session_id: activeSessionId || '',
       role: 'user',
       content: question,
       grounded: true,
@@ -93,8 +171,9 @@ export default function HomePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           bookId: selectedBook.id,
-          sessionId,
+          sessionId: activeSessionId,
           question,
+          provider,
         }),
       });
 
@@ -153,18 +232,21 @@ export default function HomePage() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-navy-950 font-sans selection:bg-brand-600 selection:text-white">
+    <div className="flex h-dvh flex-col overflow-hidden bg-surface-base">
       <Header
         books={books}
         selectedBook={selectedBook}
         onSelectBook={setSelectedBook}
         onOpenUpload={() => setIsUploadOpen(true)}
         onDeleteBook={handleDeleteBook}
+        providers={providers}
+        provider={provider}
+        onSelectProvider={handleSelectProvider}
       />
 
       {selectedBook && <IngestionProgress book={selectedBook} />}
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex min-h-0 flex-1">
         <Sidebar
           books={books}
           selectedBook={selectedBook}
@@ -172,7 +254,7 @@ export default function HomePage() {
           onOpenUpload={() => setIsUploadOpen(true)}
         />
 
-        <main className="flex-1 flex flex-col relative overflow-hidden">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col">
           <ChatWindow
             book={selectedBook}
             messages={messages}

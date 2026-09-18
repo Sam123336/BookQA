@@ -1,5 +1,6 @@
 import { extractText as extractTextFromUnpdf } from 'unpdf';
 import { ExtractedPage } from '../types';
+import { copyToUint8Array } from '../buffer';
 
 export class ScannedPdfError extends Error {
   constructor(message = "This PDF appears to be scanned or contains little extractable text.") {
@@ -44,17 +45,6 @@ function normalizePageTextEntries(rawText: unknown): string[] {
   return [];
 }
 
-async function extractWithUnpdf(pdfBuffer: Buffer): Promise<ExtractedPage[]> {
-  const uint8Array = new Uint8Array(pdfBuffer);
-  const result = await extractTextFromUnpdf(uint8Array, { mergePages: false });
-  const pageTexts = normalizePageTextEntries(result?.text);
-
-  return pageTexts.map((pageText, index) => ({
-    pageNumber: index + 1,
-    text: cleanPdfText(pageText || ''),
-  }));
-}
-
 /**
  * Extract text from a PDF using the single supported server-side parser.
  * We intentionally avoid importing pdf.js directly here because the app also uses a
@@ -63,7 +53,7 @@ async function extractWithUnpdf(pdfBuffer: Buffer): Promise<ExtractedPage[]> {
  */
 export async function extractTextFromPdf(pdfBuffer: Buffer): Promise<ExtractedPage[]> {
   try {
-    const uint8Array = new Uint8Array(pdfBuffer);
+    const uint8Array = copyToUint8Array(pdfBuffer);
     const result = await extractTextFromUnpdf(uint8Array, { mergePages: false });
     const pageTexts = normalizePageTextEntries(result?.text);
 

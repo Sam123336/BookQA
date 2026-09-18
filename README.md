@@ -169,7 +169,7 @@ Open `http://localhost:3000` in your browser.
 
 ## 🧪 Testing Scenarios
 
-1. **Upload 300+ Page PDF**: Upload a large book (e.g., *The Count of Monte Cristo*). Monitor real-time progress bar through `Extracting` -> `Embedding` -> `Indexing` -> `Ready`.
+1. **Upload 300+ Page PDF**: Upload a large book (e.g., *The Count of Monte Cristo*). The progress bar reports pages processed through `Extracting` -> `Indexing` -> `Embedding` -> `Ready`.
 2. **Grounded Book Question**:
    - **Query**: *"What is this book about?"*
    - **Response**: Concise natural language summary with verified citation badges (e.g. `[Page 2 · Opening]`).
@@ -192,5 +192,28 @@ npm run build
 
 ### Deployment
 
-- **Frontend & API**: Deploy directly to **Vercel**.
-- **Database**: Hosted on **Supabase** with `pgvector` enabled.
+Ingestion runs as **resumable steps**, not as background work. Uploading only
+stores the file and creates the book row; the client then polls
+`POST /api/books/[id]/ingest`, and each call performs one bounded unit of work
+(parse, index a slice of chunks, then one embedding batch) before returning. Because every
+piece of progress is written to the database, no request has to outlive a
+serverless time limit, and an ingestion interrupted by a restart or redeploy
+resumes from where it stopped.
+
+That makes the app host-agnostic:
+
+- **Vercel** — works, including large books. `vercel.json` is included.
+- **Render / Railway / Fly / any container host** — works. A `Dockerfile` and
+  `render.yaml` are included; `render.yaml` mounts a disk at `/data` so cached
+  PDF originals survive restarts.
+- **Database**: **Supabase** with `pgvector` enabled.
+
+On a host without a persistent disk, set up the Supabase Storage `books`
+bucket so PDF originals survive instance recycling (page view depends on it).
+
+### CI/CD
+
+`.github/workflows/ci.yml` typechecks, tests and builds every PR, builds the
+Docker image and boots it to confirm it serves, and only then deploys. Set
+`RENDER_DEPLOY_HOOK` as a repository secret to enable the deploy step; without
+it the job skips rather than failing.

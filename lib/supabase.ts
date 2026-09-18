@@ -10,12 +10,16 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseAnon
 // Public client for client components
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+const noStoreFetch: typeof fetch = (input, init) =>
+  fetch(input, { ...init, cache: 'no-store' });
+
 // Service Role client for backend server routes & RAG pipeline
 export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
   auth: {
     persistSession: false,
     autoRefreshToken: false,
-  }
+  },
+  global: { fetch: noStoreFetch },
 });
 
 export const isSupabaseConfigured = () => {

@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test:rag": "tsx scripts/test-rag.ts"
+    "test:rag": "tsx scripts/test-rag.ts",
+    "reembed": "tsx --env-file=.env scripts/reembed.ts",
+    "calibrate": "tsx --env-file=.env scripts/calibrate.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",

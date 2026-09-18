@@ -1,0 +1,8 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "git": { "deploymentEnabled": { "main": false } },
+  "functions": {
+    "app/api/books/upload/route.ts": { "maxDuration": 300 },
+    "app/api/ask/route.ts": { "maxDuration": 60 }
+  }
+}

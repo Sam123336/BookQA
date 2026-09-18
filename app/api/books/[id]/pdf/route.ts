@@ -1,18 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fsGetPdf } from '@/lib/pdf-cache';
+import { getPdf } from '@/lib/pdf-cache';
+import { toUint8Array } from '@/lib/buffer';
 
 export async function GET(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
   const { id } = params;
-  const buffer = fsGetPdf(id);
+  const buffer = getPdf(id);
 
   if (!buffer) {
     return NextResponse.json({ error: 'PDF content not found' }, { status: 404 });
   }
 
-  return new NextResponse(new Uint8Array(buffer), {
+  return new NextResponse(toUint8Array(buffer), {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="${id}.pdf"`,

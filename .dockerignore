@@ -1,0 +1,9 @@
+node_modules
+.next
+.git
+.github
+.pdf-cache
+.env
+.env.local
+*.md
+scratch

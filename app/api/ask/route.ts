@@ -1,15 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { queryBookQuestion, getMemoryBook } from '@/lib/rag-engine';
-import { Message, Citation } from '@/lib/types';
+import { queryBookQuestion } from '@/lib/rag/query';
+import { getMemoryBook } from '@/lib/rag/store';
+import { jsonError, routeError } from '@/lib/http';
+import { availableChatProviders } from '@/lib/ai/provider';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { bookId, sessionId: reqSessionId, question } = body;
 
+    // An unknown or unreachable pick falls back to the configured default rather
+    // than failing the question - the picker is a preference, not a contract.
+    const provider = availableChatProviders(process.env).find(p => p.name === body.provider)?.name;
+
     if (!bookId || !question || typeof question !== 'string' || !question.trim()) {
-      return NextResponse.json({ error: 'bookId and valid non-empty question are required.' }, { status: 400 });
+      return jsonError('bookId and valid non-empty question are required.', 400);
     }
 
     // Fetch book to verify status and title
@@ -36,9 +42,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!isReady) {
-      return NextResponse.json({
-        error: 'Book is still being processed. Question answering is disabled until status is Ready.'
-      }, { status: 400 });
+      return jsonError('Book is still being processed. Question answering is disabled until status is Ready.', 400);
     }
 
     // Ensure active chat session
@@ -60,7 +64,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Execute Vector RAG Search & LLM Answer Generation
-    const result = await queryBookQuestion(bookId, bookTitle, question.trim());
+    const result = await queryBookQuestion(bookId, bookTitle, question.trim(), provider);
 
     // Save messages to database if Supabase is active
     if (isSupabaseConfigured() && sessionId) {
@@ -107,8 +111,7 @@ export async function POST(req: NextRequest) {
       retrievedChunksCount: result.retrievedChunksCount,
     });
 
-  } catch (error: any) {
-    console.error("Ask endpoint error:", error);
-    return NextResponse.json({ error: error.message || 'An unexpected error occurred.' }, { status: 500 });
+  } catch (error) {
+    return routeError('ask', error, 'An unexpected error occurred.');
   }
 }
